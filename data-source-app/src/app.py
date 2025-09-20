@@ -13,11 +13,8 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from .config import AppConfig
 from .db.connection import DatabaseConnection
-from .extractor.metadata_extractor import MetadataExtractor
-from .extractor.quality_metrics import QualityMetricsExtractor
-from .exporters.json_exporter import JSONExporter
-from .exporters.csv_exporter import CSVExporter
-from .exporters.postgres_exporter import PostgreSQLExporter
+from .connector import BaseConnector, SourceConnection, ConnectorFactory
+from .exporters.metadata_exporter import MetadataExporter
 from .credentials.manager import CredentialsManager, DatabaseCredentials
 from .utils import setup_logging, ensure_output_dirs
 from .utils.encryption import get_encryption_instance
@@ -37,14 +34,14 @@ db_connection: Optional[DatabaseConnection] = None
 config: Optional[AppConfig] = None
 
 
-def get_database_connection(connection_id: str = "test") -> Optional[DatabaseConnection]:
-    """Get database connection using stored credentials.
+def get_source_connection(connection_id: str = "test") -> Optional[SourceConnection]:
+    """Get source connection using stored credentials.
     
     Args:
         connection_id: Connection identifier to use
         
     Returns:
-        DatabaseConnection object or None if failed
+        SourceConnection object or None if failed
     """
     global config
     
@@ -65,11 +62,22 @@ def get_database_connection(connection_id: str = "test") -> Optional[DatabaseCon
         # Build connection string from credentials
         connection_string = f"postgresql://{credentials.username}:{credentials.password}@{credentials.host}:{credentials.port}/{credentials.database_name}"
         
-        # Create new connection
-        return DatabaseConnection(connection_string)
+        # Create source connection
+        return SourceConnection(
+            source_type=credentials.source_type,
+            connection_string=connection_string,
+            credentials={
+                'host': credentials.host,
+                'port': credentials.port,
+                'database_name': credentials.database_name,
+                'username': credentials.username,
+                'password': credentials.password,
+                'ssl_mode': credentials.ssl_mode
+            }
+        )
         
     except Exception as e:
-        console.print(f"❌ Failed to get database connection: {e}", style="red")
+        console.print(f"❌ Failed to get source connection: {e}", style="red")
         return None
 
 
@@ -98,31 +106,40 @@ def scan(
         # Ensure output directories exist
         ensure_output_dirs(config)
         
-        # Get database connection using stored credentials
-        console.print(f"🔌 Getting database connection for ID: {connection_id}...", style="blue")
-        db_connection = get_database_connection(connection_id)
+        # 1. Identify the connector source_type
+        console.print(f"🔌 Getting source connection for ID: {connection_id}...", style="blue")
+        source_connection = get_source_connection(connection_id)
         
-        if not db_connection:
-            console.print("❌ Failed to get database connection", style="red")
+        if not source_connection:
+            console.print("❌ Failed to get source connection", style="red")
+            raise typer.Exit(1)
+        
+        console.print(f"📋 Source type identified: {source_connection.source_type}", style="blue")
+        
+        # 2. Instantiate the connector
+        connector = ConnectorFactory.create_connector(source_connection, config)
+        if not connector:
+            console.print(f"❌ Unsupported source type: {source_connection.source_type}", style="red")
             raise typer.Exit(1)
         
         # Test connection
-        console.print("🔌 Testing database connection...", style="blue")
-        if not db_connection.test_connection():
-            console.print("❌ Failed to connect to database", style="red")
+        console.print("🔌 Testing source connection...", style="blue")
+        if not connector.test_connection():
+            console.print("❌ Failed to connect to source", style="red")
             raise typer.Exit(1)
         
-        server_version = db_connection.get_server_version()
-        console.print(f"✅ Connected to PostgreSQL: {server_version}", style="green")
+        # Get connection info
+        conn_info = connector.get_connection_info()
+        console.print(f"✅ Connected to {conn_info.get('source_type', 'unknown')}: {conn_info.get('server_version', 'unknown')}", style="green")
         
         # Determine target schemas
         target_schemas = [schema] if schema else config.schemas
         if not target_schemas:
-            target_schemas = db_connection.get_available_schemas()
+            target_schemas = connector.get_available_schemas()
         
         console.print(f"📊 Extracting metadata for schemas: {', '.join(target_schemas)}", style="blue")
         
-        # Extract metadata
+        # 3. Connector should return the metadata
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
@@ -130,30 +147,33 @@ def scan(
         ) as progress:
             task = progress.add_task("Extracting metadata...", total=None)
             
-            extractor = MetadataExtractor(db_connection, config)
-            schemas = extractor.extract_all_metadata(target_schemas)
+            schemas = connector.extract_metadata(target_schemas)
             
             progress.update(task, description="✅ Metadata extraction completed")
         
-        # Export results
+        # 4. Create and instantiate a separate extractor class which takes care of dumping the metadata
         console.print("📁 Exporting results...", style="blue")
         
-        if output_format in ["postgres", "all"]:
-            postgres_exporter = PostgreSQLExporter(config, db_connection)
-            run_id = postgres_exporter.export_metadata(schemas)
-            console.print(f"🗄️  PostgreSQL export: run_id {run_id}", style="green")
+        # Get database connection for PostgreSQL export if available
+        db_connection = None
+        if hasattr(connector, 'db_connection'):
+            db_connection = connector.db_connection
         
-        if output_format in ["json", "all"]:
-            json_exporter = JSONExporter(config)
-            json_file = json_exporter.export_metadata(schemas)
-            console.print(f"📄 JSON export: {json_file}", style="green")
+        # Create metadata exporter (agnostic of connector)
+        metadata_exporter = MetadataExporter(config, db_connection)
         
-        if output_format in ["csv", "all"]:
-            csv_exporter = CSVExporter(config)
-            csv_files = csv_exporter.export_metadata(schemas)
-            console.print(f"📊 CSV exports: {len(csv_files)} files", style="green")
-            for file in csv_files:
-                console.print(f"  - {file}", style="dim")
+        # Export metadata using the exporter
+        export_results = metadata_exporter.export_metadata(schemas, output_format)
+        
+        # Display export results
+        for format_name, result in export_results.items():
+            if result['success']:
+                console.print(f"✅ {result['message']}", style="green")
+                if format_name == 'csv' and 'files' in result:
+                    for file in result['files']:
+                        console.print(f"  - {file}", style="dim")
+            else:
+                console.print(f"❌ {result['message']}", style="red")
         
         # Display summary
         _display_metadata_summary(schemas)
@@ -274,30 +294,40 @@ def quality_metrics(
         # Ensure output directories exist
         ensure_output_dirs(config)
         
-        # Get database connection using stored credentials
-        console.print(f"🔌 Getting database connection for ID: {connection_id}...", style="blue")
-        db_connection = get_database_connection(connection_id)
+        # 1. Identify the connector source_type
+        console.print(f"🔌 Getting source connection for ID: {connection_id}...", style="blue")
+        source_connection = get_source_connection(connection_id)
         
-        if not db_connection:
-            console.print("❌ Failed to get database connection", style="red")
+        if not source_connection:
+            console.print("❌ Failed to get source connection", style="red")
+            raise typer.Exit(1)
+        
+        console.print(f"📋 Source type identified: {source_connection.source_type}", style="blue")
+        
+        # 2. Instantiate the connector
+        connector = ConnectorFactory.create_connector(source_connection, config)
+        if not connector:
+            console.print(f"❌ Unsupported source type: {source_connection.source_type}", style="red")
             raise typer.Exit(1)
         
         # Test connection
-        console.print("🔌 Testing database connection...", style="blue")
-        if not db_connection.test_connection():
-            console.print("❌ Failed to connect to database", style="red")
+        console.print("🔌 Testing source connection...", style="blue")
+        if not connector.test_connection():
+            console.print("❌ Failed to connect to source", style="red")
             raise typer.Exit(1)
         
-        console.print("✅ Connected to database", style="green")
+        # Get connection info
+        conn_info = connector.get_connection_info()
+        console.print(f"✅ Connected to {conn_info.get('source_type', 'unknown')}", style="green")
         
         # Determine target schemas
         target_schemas = [schema] if schema else config.schemas
         if not target_schemas:
-            target_schemas = db_connection.get_available_schemas()
+            target_schemas = connector.get_available_schemas()
         
         console.print(f"📊 Extracting quality metrics for schemas: {', '.join(target_schemas)}", style="blue")
         
-        # Extract quality metrics
+        # 3. Connector should return the quality metrics
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
@@ -305,30 +335,33 @@ def quality_metrics(
         ) as progress:
             task = progress.add_task("Extracting quality metrics...", total=None)
             
-            metrics_extractor = QualityMetricsExtractor(db_connection, config)
-            metrics = metrics_extractor.extract_all_metrics(target_schemas)
+            metrics = connector.extract_quality_metrics(target_schemas)
             
             progress.update(task, description="✅ Quality metrics extraction completed")
         
-        # Export results
+        # 4. Create and instantiate a separate extractor class which takes care of dumping the metrics
         console.print("📁 Exporting results...", style="blue")
         
-        if output_format in ["postgres", "all"]:
-            postgres_exporter = PostgreSQLExporter(config, db_connection)
-            run_id = postgres_exporter.export_quality_metrics(metrics)
-            console.print(f"🗄️  PostgreSQL export: run_id {run_id}", style="green")
+        # Get database connection for PostgreSQL export if available
+        db_connection = None
+        if hasattr(connector, 'db_connection'):
+            db_connection = connector.db_connection
         
-        if output_format in ["json", "all"]:
-            json_exporter = JSONExporter(config)
-            json_file = json_exporter.export_quality_metrics(metrics)
-            console.print(f"📄 JSON export: {json_file}", style="green")
+        # Create metadata exporter (agnostic of connector)
+        metadata_exporter = MetadataExporter(config, db_connection)
         
-        if output_format in ["csv", "all"]:
-            csv_exporter = CSVExporter(config)
-            csv_files = csv_exporter.export_quality_metrics(metrics)
-            console.print(f"📊 CSV exports: {len(csv_files)} files", style="green")
-            for file in csv_files:
-                console.print(f"  - {file}", style="dim")
+        # Export quality metrics using the exporter
+        export_results = metadata_exporter.export_quality_metrics(metrics, output_format)
+        
+        # Display export results
+        for format_name, result in export_results.items():
+            if result['success']:
+                console.print(f"✅ {result['message']}", style="green")
+                if format_name == 'csv' and 'files' in result:
+                    for file in result['files']:
+                        console.print(f"  - {file}", style="dim")
+            else:
+                console.print(f"❌ {result['message']}", style="red")
         
         # Display summary
         _display_quality_summary(metrics)
@@ -424,7 +457,7 @@ def status(
         config = AppConfig.from_file(config_file)
         config.load_environment_variables()
         
-        # Initialize database connection
+        # Initialize database connection for status queries
         db_connection = DatabaseConnection(config.database.get_connection_string())
         
         # Test connection
@@ -510,7 +543,7 @@ def cleanup(
         config = AppConfig.from_file(config_file)
         config.load_environment_variables()
         
-        # Initialize database connection
+        # Initialize database connection for cleanup
         db_connection = DatabaseConnection(config.database.get_connection_string())
         
         # Test connection
@@ -750,6 +783,30 @@ def key_delete():
                 raise typer.Exit(1)
         else:
             console.print("❌ Operation cancelled", style="yellow")
+    
+    except Exception as e:
+        console.print(f"❌ Error: {e}", style="red")
+        raise typer.Exit(1)
+
+
+@app.command()
+def source_types():
+    """List supported source types."""
+    try:
+        supported_types = ConnectorFactory.get_supported_source_types()
+        
+        if not supported_types:
+            console.print("ℹ️  No source types are currently supported", style="yellow")
+            return
+        
+        table = Table(title="Supported Source Types")
+        table.add_column("Source Type", style="cyan")
+        table.add_column("Status", style="green")
+        
+        for source_type in supported_types:
+            table.add_row(source_type, "✅ Available")
+        
+        console.print(table)
     
     except Exception as e:
         console.print(f"❌ Error: {e}", style="red")
