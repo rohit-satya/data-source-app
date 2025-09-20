@@ -18,12 +18,13 @@ class ConnectorFactory:
     }
     
     @classmethod
-    def create_connector(cls, connection: SourceConnection, config: AppConfig) -> Optional[BaseConnector]:
+    def create_connector(cls, connection: SourceConnection, config: AppConfig, sync_id: str = "") -> Optional[BaseConnector]:
         """Create a connector for the specified source type.
         
         Args:
             connection: Source connection information
             config: Application configuration
+            sync_id: Unique sync identifier for this extraction run
             
         Returns:
             Connector instance or None if source type not supported
@@ -35,7 +36,7 @@ class ConnectorFactory:
             return None
         
         connector_class = cls._connectors[source_type]
-        return connector_class(connection, config)
+        return connector_class(connection, config, sync_id)
     
     @classmethod
     def get_supported_source_types(cls) -> list:

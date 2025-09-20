@@ -5,6 +5,7 @@ from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 
 from ..config import AppConfig
+from ..models.normalized_models import NormalizedSchema
 
 
 @dataclass
@@ -18,18 +19,20 @@ class SourceConnection:
 class BaseConnector(ABC):
     """Abstract base class for data source connectors."""
     
-    def __init__(self, connection: SourceConnection, config: AppConfig):
+    def __init__(self, connection: SourceConnection, config: AppConfig, sync_id: str = ""):
         """Initialize connector.
         
         Args:
             connection: Source connection information
             config: Application configuration
+            sync_id: Unique sync identifier for this extraction run
         """
         self.connection = connection
         self.config = config
+        self.sync_id = sync_id
     
     @abstractmethod
-    def extract_metadata(self, target_schemas: Optional[List[str]] = None) -> List[Any]:
+    def extract_metadata(self, target_schemas: Optional[List[str]] = None) -> List[NormalizedSchema]:
         """Extract metadata for all schemas or specified schemas.
         
         Args:

@@ -6,8 +6,7 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 
-from ..extractor.metadata_extractor import SchemaMetadata, TableMetadata, ColumnMetadata
-from ..extractor.quality_metrics import TableQualityMetrics, ColumnQualityMetrics
+from ..models.normalized_models import NormalizedSchema, NormalizedTable, NormalizedColumn, TableQualityMetrics, ColumnQualityMetrics
 from ..config import AppConfig
 
 logger = logging.getLogger(__name__)
@@ -28,39 +27,55 @@ class JSONExporter:
         if config.output.create_dirs:
             self.output_dir.mkdir(parents=True, exist_ok=True)
     
-    def export_metadata(self, schemas: List[SchemaMetadata], 
+    def export_metadata(self, schemas: List[NormalizedSchema], 
                        filename: Optional[str] = None) -> str:
-        """Export metadata to JSON file.
+        """Export metadata to separate JSON files for schema, table, and column.
         
         Args:
             schemas: List of schema metadata objects
-            filename: Optional custom filename
+            filename: Optional custom filename prefix
             
         Returns:
-            Path to the exported file
+            Path to the exported files (comma-separated)
         """
         if filename is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"metadata_{timestamp}.json"
+            filename = f"metadata_{timestamp}"
         
-        filepath = self.output_dir / filename
+        # Create separate files for each entity type
+        schema_file = self.output_dir / f"{filename}_schema.json"
+        table_file = self.output_dir / f"{filename}_table.json"
+        column_file = self.output_dir / f"{filename}_column.json"
         
-        # Convert metadata to dictionary
-        metadata_dict = {
-            'export_info': {
-                'timestamp': datetime.now().isoformat(),
-                'version': '1.0.0',
-                'total_schemas': len(schemas)
-            },
-            'schemas': [self._schema_to_dict(schema) for schema in schemas]
-        }
+        # Export schemas
+        with open(schema_file, 'w', encoding='utf-8') as f:
+            for schema in schemas:
+                schema_dict = self._schema_to_dict(schema)
+                # Remove tables from schema dict for schema file
+                if 'tables' in schema_dict:
+                    del schema_dict['tables']
+                f.write(json.dumps(schema_dict, ensure_ascii=False, default=str) + '\n')
         
-        # Write to file
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(metadata_dict, f, indent=2, ensure_ascii=False, default=str)
+        # Export tables
+        with open(table_file, 'w', encoding='utf-8') as f:
+            for schema in schemas:
+                for table in schema.tables:
+                    table_dict = self._table_to_dict(table)
+                    # Remove columns from table dict for table file
+                    if 'columns' in table_dict:
+                        del table_dict['columns']
+                    f.write(json.dumps(table_dict, ensure_ascii=False, default=str) + '\n')
         
-        logger.info(f"Metadata exported to: {filepath}")
-        return str(filepath)
+        # Export columns
+        with open(column_file, 'w', encoding='utf-8') as f:
+            for schema in schemas:
+                for table in schema.tables:
+                    for column in table.columns:
+                        column_dict = self._column_to_dict(column)
+                        f.write(json.dumps(column_dict, ensure_ascii=False, default=str) + '\n')
+        
+        logger.info(f"Metadata exported to: {schema_file}, {table_file}, {column_file}")
+        return f"{schema_file},{table_file},{column_file}"
     
     def export_quality_metrics(self, metrics: Dict[str, List[TableQualityMetrics]], 
                               filename: Optional[str] = None) -> str:
@@ -101,7 +116,7 @@ class JSONExporter:
         logger.info(f"Quality metrics exported to: {filepath}")
         return str(filepath)
     
-    def export_combined(self, schemas: List[SchemaMetadata], 
+    def export_combined(self, schemas: List[NormalizedSchema], 
                        metrics: Dict[str, List[TableQualityMetrics]], 
                        filename: Optional[str] = None) -> str:
         """Export both metadata and quality metrics to a single JSON file.
@@ -149,41 +164,17 @@ class JSONExporter:
         logger.info(f"Combined export saved to: {filepath}")
         return str(filepath)
     
-    def _schema_to_dict(self, schema: SchemaMetadata) -> Dict[str, Any]:
-        """Convert SchemaMetadata to dictionary."""
-        return {
-            'name': schema.name,
-            'owner': schema.owner,
-            'tables': [self._table_to_dict(table) for table in schema.tables]
-        }
+    def _schema_to_dict(self, schema: NormalizedSchema) -> Dict[str, Any]:
+        """Convert NormalizedSchema to dictionary."""
+        return schema.to_dict()
     
-    def _table_to_dict(self, table: TableMetadata) -> Dict[str, Any]:
-        """Convert TableMetadata to dictionary."""
-        return {
-            'name': table.name,
-            'schema': table.schema,
-            'table_type': table.table_type,
-            'comment': table.comment,
-            'tags': table.tags,
-            'columns': [self._column_to_dict(col) for col in table.columns],
-            'constraints': [self._constraint_to_dict(con) for con in table.constraints],
-            'indexes': [self._index_to_dict(idx) for idx in table.indexes]
-        }
+    def _table_to_dict(self, table: NormalizedTable) -> Dict[str, Any]:
+        """Convert NormalizedTable to dictionary."""
+        return table.to_dict()
     
-    def _column_to_dict(self, column: ColumnMetadata) -> Dict[str, Any]:
-        """Convert ColumnMetadata to dictionary."""
-        return {
-            'name': column.name,
-            'position': column.position,
-            'data_type': column.data_type,
-            'is_nullable': column.is_nullable,
-            'default_value': column.default_value,
-            'max_length': column.max_length,
-            'precision': column.precision,
-            'scale': column.scale,
-            'comment': column.comment,
-            'tags': column.tags
-        }
+    def _column_to_dict(self, column: NormalizedColumn) -> Dict[str, Any]:
+        """Convert NormalizedColumn to dictionary."""
+        return column.to_dict()
     
     def _constraint_to_dict(self, constraint) -> Dict[str, Any]:
         """Convert ConstraintMetadata to dictionary."""

@@ -33,6 +33,17 @@ console = Console()
 # Global variables for app state
 db_connection: Optional[DatabaseConnection] = None
 config: Optional[AppConfig] = None
+sync_id: Optional[str] = None
+
+
+def generate_sync_id() -> str:
+    """Generate a unique sync ID for this extraction run.
+    
+    Returns:
+        Unique sync ID as string
+    """
+    import uuid
+    return str(uuid.uuid4())
 
 
 def get_source_connection(connection_id: str = "test") -> Optional[SourceConnection]:
@@ -75,7 +86,7 @@ def scan(
     log_file: Optional[str] = typer.Option(None, "--log-file", help="Log file path")
 ):
     """Extract metadata from PostgreSQL database."""
-    global db_connection, config
+    global db_connection, config, sync_id
     
     # Setup logging
     log_level = "DEBUG" if verbose else "INFO"
@@ -86,22 +97,26 @@ def scan(
         # Load configuration
         config = AppConfig.from_file(config_file)
         config.load_environment_variables()
-        
+
         # Ensure output directories exist
         ensure_output_dirs(config)
-        
-        # 1. Identify the connector source_type
+
+        # 1. Generate sync ID for this extraction run
+        sync_id = generate_sync_id()
+        console.print(f"🆔 Sync ID: {sync_id}", style="blue")
+
+        # 2. Identify the connector source_type
         console.print(f"🔌 Getting source connection for ID: {connection_id}...", style="blue")
         source_connection = get_source_connection(connection_id)
-        
+
         if not source_connection:
             console.print("❌ Failed to get source connection", style="red")
             raise typer.Exit(1)
-        
+
         console.print(f"📋 Source type identified: {source_connection.source_type}", style="blue")
-        
-        # 2. Instantiate the connector
-        connector = ConnectorFactory.create_connector(source_connection, config)
+
+        # 3. Instantiate the connector
+        connector = ConnectorFactory.create_connector(source_connection, config, sync_id)
         if not connector:
             console.print(f"❌ Unsupported source type: {source_connection.source_type}", style="red")
             raise typer.Exit(1)
@@ -151,7 +166,12 @@ def scan(
         for format_name, result in export_results.items():
             if result['success']:
                 console.print(f"✅ {result['message']}", style="green")
-                if format_name == 'csv' and 'files' in result:
+                if format_name == 'json' and ',' in result['message']:
+                    # Handle multiple files from JSON export
+                    files = result['message'].split(',')
+                    for file in files:
+                        console.print(f"  - {file.strip()}", style="dim")
+                elif format_name == 'csv' and 'files' in result:
                     for file in result['files']:
                         console.print(f"  - {file}", style="dim")
             else:
@@ -261,7 +281,7 @@ def quality_metrics(
     log_file: Optional[str] = typer.Option(None, "--log-file", help="Log file path")
 ):
     """Extract quality metrics from PostgreSQL database."""
-    global db_connection, config
+    global db_connection, config, sync_id
     
     # Setup logging
     log_level = "DEBUG" if verbose else "INFO"
@@ -272,22 +292,26 @@ def quality_metrics(
         # Load configuration
         config = AppConfig.from_file(config_file)
         config.load_environment_variables()
-        
+
         # Ensure output directories exist
         ensure_output_dirs(config)
-        
-        # 1. Identify the connector source_type
+
+        # 1. Generate sync ID for this extraction run
+        sync_id = generate_sync_id()
+        console.print(f"🆔 Sync ID: {sync_id}", style="blue")
+
+        # 2. Identify the connector source_type
         console.print(f"🔌 Getting source connection for ID: {connection_id}...", style="blue")
         source_connection = get_source_connection(connection_id)
-        
+
         if not source_connection:
             console.print("❌ Failed to get source connection", style="red")
             raise typer.Exit(1)
-        
+
         console.print(f"📋 Source type identified: {source_connection.source_type}", style="blue")
-        
-        # 2. Instantiate the connector
-        connector = ConnectorFactory.create_connector(source_connection, config)
+
+        # 3. Instantiate the connector
+        connector = ConnectorFactory.create_connector(source_connection, config, sync_id)
         if not connector:
             console.print(f"❌ Unsupported source type: {source_connection.source_type}", style="red")
             raise typer.Exit(1)
@@ -337,7 +361,12 @@ def quality_metrics(
         for format_name, result in export_results.items():
             if result['success']:
                 console.print(f"✅ {result['message']}", style="green")
-                if format_name == 'csv' and 'files' in result:
+                if format_name == 'json' and ',' in result['message']:
+                    # Handle multiple files from JSON export
+                    files = result['message'].split(',')
+                    for file in files:
+                        console.print(f"  - {file.strip()}", style="dim")
+                elif format_name == 'csv' and 'files' in result:
                     for file in result['files']:
                         console.print(f"  - {file}", style="dim")
             else:
@@ -361,12 +390,9 @@ def _display_metadata_summary(schemas):
     total_columns = sum(
         len(table.columns) for schema in schemas for table in schema.tables
     )
-    total_constraints = sum(
-        len(table.constraints) for schema in schemas for table in schema.tables
-    )
-    total_indexes = sum(
-        len(table.indexes) for schema in schemas for table in schema.tables
-    )
+    # Normalized models don't have constraints and indexes in the same way
+    total_constraints = 0  # Not available in normalized structure
+    total_indexes = 0      # Not available in normalized structure
     
     table = Table(title="Metadata Extraction Summary")
     table.add_column("Metric", style="cyan")

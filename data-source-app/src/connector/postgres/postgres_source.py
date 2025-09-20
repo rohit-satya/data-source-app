@@ -11,138 +11,47 @@ import pandas as pd
 from ...db.connection import DatabaseConnection
 from ...db.queries import MetadataQueries
 from ...config import AppConfig
+from ...models.normalized_models import NormalizedColumn, NormalizedTable, NormalizedSchema, ColumnQualityMetrics, TableQualityMetrics
+from ...models.normalized_builder import NormalizedEntityBuilder
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class ColumnMetadata:
-    """Column metadata information."""
-    name: str
-    position: int
-    data_type: str
-    is_nullable: bool
-    default_value: Optional[str] = None
-    max_length: Optional[int] = None
-    precision: Optional[int] = None
-    scale: Optional[int] = None
-    comment: Optional[str] = None
-    tags: List[str] = None
-
-    def __post_init__(self):
-        if self.tags is None:
-            self.tags = []
-
-
-@dataclass
-class ConstraintMetadata:
-    """Constraint metadata information."""
-    name: str
-    type: str  # PRIMARY KEY, FOREIGN KEY, UNIQUE, etc.
-    columns: List[str]
-    referenced_table: Optional[str] = None
-    referenced_schema: Optional[str] = None
-    referenced_columns: Optional[List[str]] = None
-
-
-@dataclass
-class IndexMetadata:
-    """Index metadata information."""
-    name: str
-    definition: str
-    columns: List[str]
-    is_unique: bool
-    is_primary: bool
-
-
-@dataclass
-class TableMetadata:
-    """Table metadata information."""
-    name: str
-    schema: str
-    table_type: str
-    comment: Optional[str] = None
-    tags: List[str] = None
-    columns: List[ColumnMetadata] = None
-    constraints: List[ConstraintMetadata] = None
-    indexes: List[IndexMetadata] = None
-
-    def __post_init__(self):
-        if self.tags is None:
-            self.tags = []
-        if self.columns is None:
-            self.columns = []
-        if self.constraints is None:
-            self.constraints = []
-        if self.indexes is None:
-            self.indexes = []
-
-
-@dataclass
-class SchemaMetadata:
-    """Schema metadata information."""
-    name: str
-    owner: str
-    tables: List[TableMetadata] = None
-
-    def __post_init__(self):
-        if self.tables is None:
-            self.tables = []
-
-
-@dataclass
-class ColumnQualityMetrics:
-    """Quality metrics for a specific column."""
-    column_name: str
-    total_count: int
-    non_null_count: int
-    null_count: int
-    null_percentage: float
-    distinct_count: int
-    distinct_percentage: float
-    top_values: List[Dict[str, Any]] = None
-
-    def __post_init__(self):
-        if self.top_values is None:
-            self.top_values = []
-
-
-@dataclass
-class TableQualityMetrics:
-    """Quality metrics for a specific table."""
-    schema_name: str
-    table_name: str
-    row_count: int
-    column_metrics: List[ColumnQualityMetrics] = None
-
-    def __post_init__(self):
-        if self.column_metrics is None:
-            self.column_metrics = []
+# Old dataclass definitions removed - now using normalized models
 
 
 class PostgreSQLSource:
     """PostgreSQL source implementation for metadata and quality metrics extraction."""
     
-    def __init__(self, db_connection: DatabaseConnection, config: AppConfig):
+    def __init__(self, db_connection: DatabaseConnection, config: AppConfig, 
+                 connection_name: str = "test-connection", sync_id: str = ""):
         """Initialize PostgreSQL source.
         
         Args:
             db_connection: Database connection instance
             config: Application configuration
+            connection_name: Name of the connection
+            sync_id: Unique sync identifier for this extraction run
         """
         self.db_connection = db_connection
         self.config = config
         self.queries = MetadataQueries()
         self._metadata_yaml: Optional[Dict] = None
+        
+        # Initialize normalized entity builder
+        self.builder = NormalizedEntityBuilder(
+            connection_name=connection_name,
+            sync_id=sync_id
+        )
     
-    def extract_all_metadata(self, target_schemas: Optional[List[str]] = None) -> List[SchemaMetadata]:
+    def extract_all_metadata(self, target_schemas: Optional[List[str]] = None) -> List[NormalizedSchema]:
         """Extract metadata for all schemas or specified schemas.
         
         Args:
             target_schemas: List of schema names to extract. If None, uses config schemas.
             
         Returns:
-            List of schema metadata objects
+            List of normalized schema metadata objects
         """
         if target_schemas is None:
             target_schemas = self.config.schemas
@@ -153,10 +62,13 @@ class PostgreSQLSource:
         
         logger.info(f"Extracting metadata for schemas: {target_schemas}")
         
+        # Get database name from connection string
+        database_name = self._get_database_name_from_connection()
+        
         schemas = []
         for schema_name in target_schemas:
             try:
-                schema_metadata = self.extract_schema_metadata(schema_name)
+                schema_metadata = self.extract_schema_metadata(database_name, schema_name)
                 schemas.append(schema_metadata)
             except Exception as e:
                 logger.error(f"Failed to extract metadata for schema {schema_name}: {e}")
@@ -164,32 +76,35 @@ class PostgreSQLSource:
         
         return schemas
     
-    def extract_schema_metadata(self, schema_name: str) -> SchemaMetadata:
+    def _get_database_name_from_connection(self) -> str:
+        """Extract database name from connection string."""
+        try:
+            # Parse connection string to get database name
+            # Format: postgresql://user:pass@host:port/database
+            connection_string = self.db_connection.connection_string
+            if '/' in connection_string:
+                return connection_string.split('/')[-1]
+            return "unknown"
+        except Exception:
+            return "unknown"
+    
+    def extract_schema_metadata(self, database_name: str, schema_name: str) -> NormalizedSchema:
         """Extract metadata for a specific schema.
         
         Args:
+            database_name: Name of the database
             schema_name: Name of the schema
             
         Returns:
-            Schema metadata object
+            Normalized schema metadata object
         """
         logger.info(f"Extracting metadata for schema: {schema_name}")
         
+        # Create normalized schema
+        schema_metadata = self.builder.create_schema(database_name, schema_name)
+        
         with self.db_connection.get_connection() as conn:
             with conn.cursor() as cur:
-                # Get schema info
-                cur.execute(self.queries.get_schemas())
-                schemas = cur.fetchall()
-                schema_info = next((s for s in schemas if s[0] == schema_name), None)
-                
-                if not schema_info:
-                    raise ValueError(f"Schema {schema_name} not found")
-                
-                schema_metadata = SchemaMetadata(
-                    name=schema_info[0],
-                    owner=schema_info[1]
-                )
-                
                 # Get tables
                 cur.execute(self.queries.get_tables(schema_name), (schema_name,))
                 tables = cur.fetchall()
@@ -200,7 +115,7 @@ class PostgreSQLSource:
                     
                     try:
                         table_metadata = self._extract_table_metadata(
-                            schema_name, table_name, table_type, conn
+                            database_name, schema_name, table_name, table_type, conn
                         )
                         schema_metadata.tables.append(table_metadata)
                     except Exception as e:
@@ -209,10 +124,13 @@ class PostgreSQLSource:
         
         return schema_metadata
     
-    def _extract_table_metadata(self, schema_name: str, table_name: str, 
-                               table_type: str, conn) -> TableMetadata:
+    def _extract_table_metadata(self, database_name: str, schema_name: str, table_name: str, 
+                               table_type: str, conn) -> NormalizedTable:
         """Extract metadata for a specific table."""
         with conn.cursor() as cur:
+            # Create normalized table
+            table_metadata = self.builder.create_table(database_name, schema_name, table_name, table_type)
+            
             # Get table comment
             table_comment = None
             if self.config.business_context.extract_comments:
@@ -221,6 +139,10 @@ class PostgreSQLSource:
                 result = cur.fetchone()
                 if result and result[0]:
                     table_comment = result[0]
+            
+            # Add comment to custom attributes
+            if table_comment:
+                table_metadata.customAttributes["comment"] = table_comment
             
             # Parse tags from comment
             tags = []
@@ -231,26 +153,15 @@ class PostgreSQLSource:
             yaml_tags = self._get_tags_from_yaml(schema_name, table_name)
             tags.extend(yaml_tags)
             
-            table_metadata = TableMetadata(
-                name=table_name,
-                schema=schema_name,
-                table_type=table_type,
-                comment=table_comment,
-                tags=list(set(tags))  # Remove duplicates
-            )
+            if tags:
+                table_metadata.customAttributes["tags"] = list(set(tags))
             
             # Extract columns
-            table_metadata.columns = self._extract_columns(schema_name, table_name, cur)
-            
-            # Extract constraints
-            table_metadata.constraints = self._extract_constraints(schema_name, table_name, cur)
-            
-            # Extract indexes
-            table_metadata.indexes = self._extract_indexes(schema_name, table_name, cur)
+            table_metadata.columns = self._extract_columns(database_name, schema_name, table_name, cur)
             
             return table_metadata
     
-    def _extract_columns(self, schema_name: str, table_name: str, cur) -> List[ColumnMetadata]:
+    def _extract_columns(self, database_name: str, schema_name: str, table_name: str, cur) -> List[NormalizedColumn]:
         """Extract column metadata."""
         cur.execute(self.queries.get_columns(schema_name, table_name), 
                    (schema_name, table_name))
@@ -277,102 +188,25 @@ class PostgreSQLSource:
             yaml_tags = self._get_tags_from_yaml(schema_name, table_name, column_name)
             tags.extend(yaml_tags)
             
-            column = ColumnMetadata(
-                name=column_name,
-                position=col_data[1],
+            # Create normalized column
+            column = self.builder.create_column(
+                database_name=database_name,
+                schema_name=schema_name,
+                table_name=table_name,
+                column_name=column_name,
                 data_type=col_data[4],
                 is_nullable=col_data[3] == 'YES',
+                ordinal_position=col_data[1],
                 default_value=col_data[2],
                 max_length=col_data[5],
                 precision=col_data[6],
                 scale=col_data[7],
                 comment=comment,
-                tags=list(set(tags))
+                tags=list(set(tags)) if tags else []
             )
             columns.append(column)
         
         return columns
-    
-    def _extract_constraints(self, schema_name: str, table_name: str, cur) -> List[ConstraintMetadata]:
-        """Extract constraint metadata."""
-        constraints = []
-        
-        # Primary keys
-        cur.execute(self.queries.get_primary_keys(schema_name, table_name), 
-                   (schema_name, table_name))
-        pk_data = cur.fetchall()
-        if pk_data:
-            pk_columns = [row[0] for row in pk_data]
-            constraints.append(ConstraintMetadata(
-                name=f"pk_{table_name}",
-                type="PRIMARY KEY",
-                columns=pk_columns
-            ))
-        
-        # Foreign keys
-        cur.execute(self.queries.get_foreign_keys(schema_name, table_name), 
-                   (schema_name, table_name))
-        fk_data = cur.fetchall()
-        for fk_row in fk_data:
-            constraints.append(ConstraintMetadata(
-                name=fk_row[4],  # constraint_name
-                type="FOREIGN KEY",
-                columns=[fk_row[0]],  # column_name
-                referenced_table=fk_row[2],  # foreign_table_name
-                referenced_schema=fk_row[1],  # foreign_table_schema
-                referenced_columns=[fk_row[3]]  # foreign_column_name
-            ))
-        
-        # Unique constraints
-        cur.execute(self.queries.get_unique_constraints(schema_name, table_name), 
-                   (schema_name, table_name))
-        unique_data = cur.fetchall()
-        unique_groups = {}
-        for unique_row in unique_data:
-            constraint_name = unique_row[0]
-            column_name = unique_row[1]
-            if constraint_name not in unique_groups:
-                unique_groups[constraint_name] = []
-            unique_groups[constraint_name].append(column_name)
-        
-        for constraint_name, columns in unique_groups.items():
-            constraints.append(ConstraintMetadata(
-                name=constraint_name,
-                type="UNIQUE",
-                columns=columns
-            ))
-        
-        return constraints
-    
-    def _extract_indexes(self, schema_name: str, table_name: str, cur) -> List[IndexMetadata]:
-        """Extract index metadata."""
-        cur.execute(self.queries.get_indexes(schema_name, table_name), 
-                   (schema_name, table_name))
-        index_data = cur.fetchall()
-        
-        index_groups = {}
-        for idx_row in index_data:
-            index_name = idx_row[0]
-            if index_name not in index_groups:
-                index_groups[index_name] = {
-                    'definition': idx_row[1],
-                    'columns': [],
-                    'is_unique': idx_row[3],
-                    'is_primary': idx_row[4]
-                }
-            index_groups[index_name]['columns'].append(idx_row[2])
-        
-        indexes = []
-        for index_name, index_info in index_groups.items():
-            indexes.append(IndexMetadata(
-                name=index_name,
-                definition=index_info['definition'],
-                columns=index_info['columns'],
-                is_unique=index_info['is_unique'],
-                is_primary=index_info['is_primary']
-            ))
-        
-        return indexes
     
     def extract_all_quality_metrics(self, schemas: List[str]) -> Dict[str, List[TableQualityMetrics]]:
         """Extract quality metrics for all tables in specified schemas.

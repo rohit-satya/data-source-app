@@ -4,7 +4,8 @@ import logging
 from typing import Dict, List, Any, Optional
 
 from ..base_connector import BaseConnector, SourceConnection
-from .postgres_source import PostgreSQLSource, SchemaMetadata, TableQualityMetrics
+from .postgres_source import PostgreSQLSource
+from ...models.normalized_models import NormalizedSchema, TableQualityMetrics
 from ...db.connection import DatabaseConnection
 from ...config import AppConfig
 
@@ -14,18 +15,25 @@ logger = logging.getLogger(__name__)
 class PostgreSQLConnector(BaseConnector):
     """PostgreSQL connector implementation."""
     
-    def __init__(self, connection: SourceConnection, config: AppConfig):
+    def __init__(self, connection: SourceConnection, config: AppConfig, sync_id: str = ""):
         """Initialize PostgreSQL connector.
         
         Args:
             connection: Source connection information
             config: Application configuration
+            sync_id: Unique sync identifier for this extraction run
         """
-        super().__init__(connection, config)
+        super().__init__(connection, config, sync_id)
         self.db_connection = DatabaseConnection(connection.connection_string)
-        self.source = PostgreSQLSource(self.db_connection, config)
+        
+        self.source = PostgreSQLSource(
+            self.db_connection, 
+            config, 
+            connection_name=connection.credentials.get('connection_name', 'test-connection'),
+            sync_id=sync_id
+        )
     
-    def extract_metadata(self, target_schemas: Optional[List[str]] = None) -> List[SchemaMetadata]:
+    def extract_metadata(self, target_schemas: Optional[List[str]] = None) -> List[NormalizedSchema]:
         """Extract metadata for all schemas or specified schemas.
         
         Args:
