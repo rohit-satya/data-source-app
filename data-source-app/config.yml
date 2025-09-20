@@ -1,0 +1,57 @@
+# PostgreSQL Metadata App Configuration
+
+# Database Connection
+database:
+  # Use DSN format for connection
+  dsn: "postgresql://rohit.satyainti@localhost:5432/postgres"
+  # Alternative: individual connection parameters
+  # host: localhost
+  # port: 5432
+  # database: postgres
+  # user: postgres
+  # password: password
+
+# Target schemas to scan (empty = all schemas)
+schemas:
+  - public
+  - dsa_ecommerce
+  # - information_schema
+  # - pg_catalog
+
+# Quality metrics configuration
+metrics:
+  enabled: true
+  sample_limit: 10000  # Limit rows for large tables
+  top_k_values: 10     # Number of top values to extract
+  include_null_counts: true
+  include_distinct_counts: true
+
+# Output configuration
+output:
+  json_dir: "./output/json"
+  csv_dir: "./output/csv"
+  create_dirs: true
+  # PostgreSQL export configuration
+  postgres:
+    enabled: true
+    schema: "dsa_production"
+    cleanup_days: 30
+
+# Business context configuration
+business_context:
+  # Enable extraction of comments and tags
+  extract_comments: true
+  # Parse tags from comments (format: "Description text [tags: tag1,tag2]")
+  parse_tags: true
+  # Custom metadata table (optional)
+  metadata_table: null
+  # YAML mapping file for additional metadata (optional)
+  metadata_yaml: "./sample_data/sample_metadata.yml"
+
+# Lineage configuration
+lineage:
+  enabled: true
+  # Extract foreign key relationships
+  extract_foreign_keys: true
+  # Parse view definitions for dependencies
+  parse_view_dependencies: true

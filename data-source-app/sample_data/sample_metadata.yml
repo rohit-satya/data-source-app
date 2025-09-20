@@ -1,0 +1,158 @@
+# Sample metadata YAML file for additional business context
+# This file provides additional tags and descriptions that complement PostgreSQL comments
+
+ecommerce:
+  customers:
+    description: "Customer master data with personal and financial information"
+    tags: ["master-data", "customer", "financial"]
+    columns:
+      customer_id:
+        description: "Primary key for customer records"
+        tags: ["primary-key", "surrogate-key"]
+      first_name:
+        description: "Customer's given name"
+        tags: ["pii", "personal", "name"]
+      last_name:
+        description: "Customer's family name"
+        tags: ["pii", "personal", "name"]
+      email:
+        description: "Primary contact email address"
+        tags: ["pii", "contact", "unique", "business-key"]
+      phone:
+        description: "Customer's phone number"
+        tags: ["pii", "contact", "optional"]
+      date_of_birth:
+        description: "Customer's birth date for age verification"
+        tags: ["pii", "personal", "sensitive", "age"]
+      credit_score:
+        description: "FICO credit score for risk assessment"
+        tags: ["financial", "risk", "score", "sensitive"]
+      notes:
+        description: "Internal notes about the customer"
+        tags: ["internal", "notes", "optional"]
+
+  categories:
+    description: "Product category hierarchy for catalog organization"
+    tags: ["reference-data", "catalog", "hierarchy"]
+    columns:
+      category_id:
+        description: "Primary key for category records"
+        tags: ["primary-key", "surrogate-key"]
+      name:
+        description: "Category display name"
+        tags: ["business-key", "display", "required"]
+      parent_category_id:
+        description: "Self-referencing foreign key for hierarchy"
+        tags: ["hierarchy", "self-reference", "optional"]
+      is_active:
+        description: "Whether category is currently active"
+        tags: ["status", "boolean", "filter"]
+
+  products:
+    description: "Product catalog with inventory and pricing information"
+    tags: ["master-data", "catalog", "inventory", "pricing"]
+    columns:
+      product_id:
+        description: "Primary key for product records"
+        tags: ["primary-key", "surrogate-key"]
+      sku:
+        description: "Stock Keeping Unit - unique product identifier"
+        tags: ["business-key", "unique", "inventory", "external"]
+      name:
+        description: "Product display name"
+        tags: ["display", "required", "searchable"]
+      price:
+        description: "Selling price to customers"
+        tags: ["pricing", "financial", "required"]
+      cost:
+        description: "Cost price for margin calculation"
+        tags: ["pricing", "financial", "internal", "margin"]
+      stock_quantity:
+        description: "Current inventory level"
+        tags: ["inventory", "quantity", "operational"]
+      dimensions_cm:
+        description: "Product dimensions in centimeters"
+        tags: ["physical", "shipping", "json", "optional"]
+
+  orders:
+    description: "Customer orders with financial and shipping information"
+    tags: ["transaction", "sales", "financial", "shipping"]
+    columns:
+      order_id:
+        description: "Primary key for order records"
+        tags: ["primary-key", "surrogate-key"]
+      order_number:
+        description: "Human-readable order identifier"
+        tags: ["business-key", "unique", "external", "display"]
+      customer_id:
+        description: "Reference to customer who placed the order"
+        tags: ["foreign-key", "customer", "required"]
+      status:
+        description: "Current status of the order"
+        tags: ["status", "workflow", "enum", "tracking"]
+      total_amount:
+        description: "Final amount including taxes and shipping"
+        tags: ["financial", "calculated", "required"]
+      shipping_address:
+        description: "Delivery address in JSON format"
+        tags: ["address", "shipping", "json", "pii"]
+      billing_address:
+        description: "Billing address in JSON format"
+        tags: ["address", "billing", "json", "pii", "optional"]
+
+  order_items:
+    description: "Individual line items within orders"
+    tags: ["transaction", "line-items", "sales"]
+    columns:
+      order_item_id:
+        description: "Primary key for order item records"
+        tags: ["primary-key", "surrogate-key"]
+      order_id:
+        description: "Reference to parent order"
+        tags: ["foreign-key", "order", "required"]
+      product_id:
+        description: "Reference to product being ordered"
+        tags: ["foreign-key", "product", "required"]
+      quantity:
+        description: "Number of units ordered"
+        tags: ["quantity", "required", "positive"]
+      unit_price:
+        description: "Price per unit at time of order"
+        tags: ["pricing", "snapshot", "required"]
+      total_price:
+        description: "Total price for this line item"
+        tags: ["pricing", "calculated", "required"]
+
+  reviews:
+    description: "Customer product reviews and ratings"
+    tags: ["feedback", "ratings", "customer-experience"]
+    columns:
+      review_id:
+        description: "Primary key for review records"
+        tags: ["primary-key", "surrogate-key"]
+      product_id:
+        description: "Reference to reviewed product"
+        tags: ["foreign-key", "product", "required"]
+      customer_id:
+        description: "Reference to reviewing customer"
+        tags: ["foreign-key", "customer", "required"]
+      rating:
+        description: "Star rating from 1 to 5"
+        tags: ["rating", "score", "required", "range"]
+      title:
+        description: "Review title or headline"
+        tags: ["text", "optional", "searchable"]
+      comment:
+        description: "Detailed review text"
+        tags: ["text", "optional", "searchable", "unstructured"]
+      is_verified:
+        description: "Whether this is a verified purchase review"
+        tags: ["verification", "trust", "boolean"]
+      helpful_votes:
+        description: "Number of helpful votes from other customers"
+        tags: ["social", "engagement", "counter"]
+
+# Additional schema-level metadata
+public:
+  description: "Default PostgreSQL schema for system tables"
+  tags: ["system", "postgresql", "default"]
