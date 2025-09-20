@@ -6,9 +6,8 @@ from pathlib import Path
 
 from .json_exporter import JSONExporter
 from .csv_exporter import CSVExporter
-from .postgres_exporter import PostgreSQLExporter
 from ..config import AppConfig
-from ..db.connection import DatabaseConnection
+from ..services.database_service import DatabaseService
 
 logger = logging.getLogger(__name__)
 
@@ -16,20 +15,19 @@ logger = logging.getLogger(__name__)
 class MetadataExporter:
     """Handles exporting metadata to different formats, agnostic of the source connector."""
     
-    def __init__(self, config: AppConfig, db_connection: Optional[DatabaseConnection] = None):
+    def __init__(self, config: AppConfig, database_service: Optional[DatabaseService] = None):
         """Initialize metadata exporter.
         
         Args:
             config: Application configuration
-            db_connection: Optional database connection for PostgreSQL export
+            database_service: Optional database service for PostgreSQL export
         """
         self.config = config
-        self.db_connection = db_connection
+        self.database_service = database_service or DatabaseService(config)
         
         # Initialize format-specific exporters
         self.json_exporter = JSONExporter(config)
         self.csv_exporter = CSVExporter(config)
-        self.postgres_exporter = PostgreSQLExporter(config, db_connection) if db_connection else None
     
     def export_metadata(self, schemas: List[Any], output_format: str) -> Dict[str, Any]:
         """Export metadata in the specified format.
@@ -44,26 +42,15 @@ class MetadataExporter:
         results = {}
         
         if output_format in ["postgres", "all"]:
-            if self.postgres_exporter:
-                try:
-                    run_id = self.postgres_exporter.export_metadata(schemas)
-                    results['postgres'] = {
-                        'success': True,
-                        'run_id': run_id,
-                        'message': f"PostgreSQL export: run_id {run_id}"
-                    }
-                except Exception as e:
-                    logger.error(f"PostgreSQL export failed: {e}")
-                    results['postgres'] = {
-                        'success': False,
-                        'error': str(e),
-                        'message': f"PostgreSQL export failed: {e}"
-                    }
-            else:
+            try:
+                result = self.database_service.export_metadata(schemas)
+                results['postgres'] = result
+            except Exception as e:
+                logger.error(f"PostgreSQL export failed: {e}")
                 results['postgres'] = {
                     'success': False,
-                    'error': 'No database connection available',
-                    'message': "PostgreSQL export not available - no database connection"
+                    'error': str(e),
+                    'message': f"PostgreSQL export failed: {e}"
                 }
         
         if output_format in ["json", "all"]:
@@ -114,26 +101,15 @@ class MetadataExporter:
         results = {}
         
         if output_format in ["postgres", "all"]:
-            if self.postgres_exporter:
-                try:
-                    run_id = self.postgres_exporter.export_quality_metrics(metrics)
-                    results['postgres'] = {
-                        'success': True,
-                        'run_id': run_id,
-                        'message': f"PostgreSQL export: run_id {run_id}"
-                    }
-                except Exception as e:
-                    logger.error(f"PostgreSQL export failed: {e}")
-                    results['postgres'] = {
-                        'success': False,
-                        'error': str(e),
-                        'message': f"PostgreSQL export failed: {e}"
-                    }
-            else:
+            try:
+                result = self.database_service.export_quality_metrics(metrics)
+                results['postgres'] = result
+            except Exception as e:
+                logger.error(f"PostgreSQL export failed: {e}")
                 results['postgres'] = {
                     'success': False,
-                    'error': 'No database connection available',
-                    'message': "PostgreSQL export not available - no database connection"
+                    'error': str(e),
+                    'message': f"PostgreSQL export failed: {e}"
                 }
         
         if output_format in ["json", "all"]:

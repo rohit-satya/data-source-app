@@ -15,6 +15,7 @@ from .config import AppConfig
 from .db.connection import DatabaseConnection
 from .connector import BaseConnector, SourceConnection, ConnectorFactory
 from .exporters.metadata_exporter import MetadataExporter
+from .services.database_service import DatabaseService
 from .credentials.manager import CredentialsManager, DatabaseCredentials
 from .utils import setup_logging, ensure_output_dirs
 from .utils.encryption import get_encryption_instance
@@ -49,32 +50,15 @@ def get_source_connection(connection_id: str = "test") -> Optional[SourceConnect
         return None
     
     try:
-        # First, connect to dsa_production to get credentials
-        initial_connection = DatabaseConnection(config.database.get_connection_string())
-        credentials_manager = CredentialsManager(initial_connection)
+        # Use DatabaseService to get credentials and create source connection
+        database_service = DatabaseService(config)
+        source_connection = database_service.create_source_connection(connection_id)
         
-        # Get credentials
-        credentials = credentials_manager.get_credentials(connection_id)
-        if not credentials:
+        if not source_connection:
             console.print(f"❌ No credentials found for connection_id: {connection_id}", style="red")
             return None
         
-        # Build connection string from credentials
-        connection_string = f"postgresql://{credentials.username}:{credentials.password}@{credentials.host}:{credentials.port}/{credentials.database_name}"
-        
-        # Create source connection
-        return SourceConnection(
-            source_type=credentials.source_type,
-            connection_string=connection_string,
-            credentials={
-                'host': credentials.host,
-                'port': credentials.port,
-                'database_name': credentials.database_name,
-                'username': credentials.username,
-                'password': credentials.password,
-                'ssl_mode': credentials.ssl_mode
-            }
-        )
+        return source_connection
         
     except Exception as e:
         console.print(f"❌ Failed to get source connection: {e}", style="red")
@@ -154,13 +138,11 @@ def scan(
         # 4. Create and instantiate a separate extractor class which takes care of dumping the metadata
         console.print("📁 Exporting results...", style="blue")
         
-        # Get database connection for PostgreSQL export if available
-        db_connection = None
-        if hasattr(connector, 'db_connection'):
-            db_connection = connector.db_connection
+        # Create database service for PostgreSQL operations
+        database_service = DatabaseService(config)
         
         # Create metadata exporter (agnostic of connector)
-        metadata_exporter = MetadataExporter(config, db_connection)
+        metadata_exporter = MetadataExporter(config, database_service)
         
         # Export metadata using the exporter
         export_results = metadata_exporter.export_metadata(schemas, output_format)
@@ -342,13 +324,11 @@ def quality_metrics(
         # 4. Create and instantiate a separate extractor class which takes care of dumping the metrics
         console.print("📁 Exporting results...", style="blue")
         
-        # Get database connection for PostgreSQL export if available
-        db_connection = None
-        if hasattr(connector, 'db_connection'):
-            db_connection = connector.db_connection
+        # Create database service for PostgreSQL operations
+        database_service = DatabaseService(config)
         
         # Create metadata exporter (agnostic of connector)
-        metadata_exporter = MetadataExporter(config, db_connection)
+        metadata_exporter = MetadataExporter(config, database_service)
         
         # Export quality metrics using the exporter
         export_results = metadata_exporter.export_quality_metrics(metrics, output_format)
@@ -457,21 +437,20 @@ def status(
         config = AppConfig.from_file(config_file)
         config.load_environment_variables()
         
-        # Initialize database connection for status queries
-        db_connection = DatabaseConnection(config.database.get_connection_string())
+        # Initialize database service for status queries
+        database_service = DatabaseService(config)
         
         # Test connection
         console.print("🔌 Testing database connection...", style="blue")
-        if not db_connection.test_connection():
+        if not database_service.test_connection():
             console.print("❌ Failed to connect to database", style="red")
             raise typer.Exit(1)
         
         console.print("✅ Connected to database", style="green")
         
         # Get latest metadata run
-        postgres_exporter = PostgreSQLExporter(config, db_connection)
-        latest_metadata = postgres_exporter.get_latest_metadata_run()
-        latest_quality = postgres_exporter.get_latest_quality_metrics_run()
+        latest_metadata = database_service.get_latest_metadata_run()
+        latest_quality = database_service.get_latest_quality_metrics_run()
         
         # Display metadata status
         if latest_metadata:
@@ -543,20 +522,19 @@ def cleanup(
         config = AppConfig.from_file(config_file)
         config.load_environment_variables()
         
-        # Initialize database connection for cleanup
-        db_connection = DatabaseConnection(config.database.get_connection_string())
+        # Initialize database service for cleanup
+        database_service = DatabaseService(config)
         
         # Test connection
         console.print("🔌 Testing database connection...", style="blue")
-        if not db_connection.test_connection():
+        if not database_service.test_connection():
             console.print("❌ Failed to connect to database", style="red")
             raise typer.Exit(1)
         
         console.print("✅ Connected to database", style="green")
         
         # Clean up old metadata
-        postgres_exporter = PostgreSQLExporter(config, db_connection)
-        deleted_count = postgres_exporter.cleanup_old_metadata(days)
+        deleted_count = database_service.cleanup_old_metadata(days)
         
         console.print(f"🧹 Cleaned up {deleted_count} old metadata records (older than {days} days)", style="green")
         
@@ -589,9 +567,9 @@ def credentials_add(
         config = AppConfig.from_file(config_file)
         config.load_environment_variables()
         
-        # Connect to dsa_production to manage credentials
-        db_connection = DatabaseConnection(config.database.get_connection_string())
-        credentials_manager = CredentialsManager(db_connection)
+        # Use DatabaseService to manage credentials
+        database_service = DatabaseService(config)
+        credentials_manager = database_service.get_credentials_manager()
         
         # Create credentials object
         credentials = DatabaseCredentials(
@@ -641,9 +619,9 @@ def credentials_list(
         config = AppConfig.from_file(config_file)
         config.load_environment_variables()
         
-        # Connect to dsa_production to manage credentials
-        db_connection = DatabaseConnection(config.database.get_connection_string())
-        credentials_manager = CredentialsManager(db_connection)
+        # Use DatabaseService to manage credentials
+        database_service = DatabaseService(config)
+        credentials_manager = database_service.get_credentials_manager()
         
         # List credentials
         credentials_list = credentials_manager.list_credentials()
@@ -698,9 +676,9 @@ def credentials_delete(
         config = AppConfig.from_file(config_file)
         config.load_environment_variables()
         
-        # Connect to dsa_production to manage credentials
-        db_connection = DatabaseConnection(config.database.get_connection_string())
-        credentials_manager = CredentialsManager(db_connection)
+        # Use DatabaseService to manage credentials
+        database_service = DatabaseService(config)
+        credentials_manager = database_service.get_credentials_manager()
         
         # Confirm deletion
         if not typer.confirm(f"Are you sure you want to delete credentials for '{connection_id}'?"):
