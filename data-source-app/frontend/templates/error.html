@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}Error - Metadata Frontend{% endblock %}
+
+{% block header_title %}Error{% endblock %}
+{% block header_subtitle %}Something went wrong{% endblock %}
+
+{% block content %}
+<div class="error">
+    <h2>❌ Error</h2>
+    <p>{{ error }}</p>
+</div>
+
+<div class="card">
+    <h2>🔧 Troubleshooting</h2>
+    <p>If you're seeing this error, try the following:</p>
+    <ol>
+        <li>Make sure metadata has been extracted for this connection</li>
+        <li>Run: <code>python -m src.app scan --schema dsa_ecommerce --format postgres</code></li>
+        <li>Check that the connection_id exists in the database</li>
+        <li>Verify the database connection is working</li>
+    </ol>
+</div>
+
+<a href="/" class="btn">← Back to Connections</a>
+{% endblock %}

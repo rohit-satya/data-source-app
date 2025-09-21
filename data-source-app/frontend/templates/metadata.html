@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+
+{% block title %}{{ connection_id }} - Metadata Frontend{% endblock %}
+
+{% block header_title %}{{ connection_id }} Metadata{% endblock %}
+{% block header_subtitle %}Latest database schema and table information{% endblock %}
+
+{% block content %}
+<a href="/" class="back-link">← Back to Connections</a>
+
+<div class="card">
+    <h2>📊 Sync Information</h2>
+    <div class="stats">
+        <div class="stat-item">
+            <div class="stat-number">{{ sync_run.sync_id[:8] }}...</div>
+            <div class="stat-label">Sync ID</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-number">{{ sync_run.connector_name }}</div>
+            <div class="stat-label">Connector</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-number">{{ sync_run.sync_timestamp[:10] }}</div>
+            <div class="stat-label">Sync Date</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-number">{{ metadata.schemas|length }}</div>
+            <div class="stat-label">Schemas</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-number">{{ metadata.tables|length }}</div>
+            <div class="stat-label">Tables</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-number">{{ metadata.columns|length }}</div>
+            <div class="stat-label">Columns</div>
+        </div>
+    </div>
+</div>
+
+<div class="metadata-section">
+    <h2>📁 Database Schema</h2>
+    
+    {% for schema in metadata.schemas %}
+    <div class="schema-section">
+        <h3>Schema: {{ schema.name }}</h3>
+        <p><strong>Status:</strong> <span class="badge badge-success">{{ schema.status }}</span></p>
+        <p><strong>Tenant ID:</strong> {{ schema.tenant_id }}</p>
+        <p><strong>Connector:</strong> {{ schema.connector_name }}</p>
+        
+        {% if schema.custom_attributes %}
+        <details style="margin-top: 10px;">
+            <summary>Custom Attributes</summary>
+            <pre style="background: #f8f9fa; padding: 10px; border-radius: 5px; margin-top: 5px; font-size: 0.9em;">{{ schema.custom_attributes | tojson(indent=2) }}</pre>
+        </details>
+        {% endif %}
+        
+        {% set schema_tables = metadata.tables | selectattr('attributes.schemaName', 'equalto', schema.name) | list %}
+        {% if schema_tables %}
+        <div class="table-section">
+            <h4>Tables ({{ schema_tables|length }})</h4>
+            
+            {% for table in schema_tables %}
+            <div class="table-section">
+                <h5>📋 {{ table.name }}</h5>
+                <p><strong>Status:</strong> <span class="badge badge-success">{{ table.status }}</span></p>
+                
+                {% if table.custom_attributes %}
+                <p><strong>Type:</strong> {{ table.custom_attributes.get('table_type', 'Unknown') }}</p>
+                {% endif %}
+                
+                {% set table_columns = metadata.columns | selectattr('attributes.tableName', 'equalto', table.name) | selectattr('attributes.schemaName', 'equalto', schema.name) | list %}
+                {% if table_columns %}
+                <div class="column-list">
+                    <h6>📋 Columns ({{ table_columns|length }})</h6>
+                    <div class="columns-table">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Column Name</th>
+                                    <th>Data Type</th>
+                                    <th>Nullable</th>
+                                    <th>Order</th>
+                                    <th>Comment</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for column in table_columns %}
+                                <tr>
+                                    <td><strong>{{ column.name }}</strong></td>
+                                    <td><span class="data-type">{{ column.attributes.get('dataType', 'unknown') }}</span></td>
+                                    <td>
+                                        {% if column.attributes.get('isNullable') %}
+                                            <span class="badge badge-success">NULL</span>
+                                        {% else %}
+                                            <span class="badge badge-warning">NOT NULL</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ column.attributes.get('order', column.custom_attributes.get('ordinal_position', '')) }}</td>
+                                    <td>
+                                        {% if column.custom_attributes and column.custom_attributes.get('comment') %}
+                                            <small style="color: #666;">{{ column.custom_attributes.comment }}</small>
+                                        {% else %}
+                                            <em style="color: #999;">No comment</em>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+
+<div class="metadata-section">
+    <h2>📋 All Columns Overview</h2>
+    <div class="card">
+        <p>Complete list of all columns across all tables and schemas.</p>
+        
+        <div class="columns-table">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Schema</th>
+                        <th>Table</th>
+                        <th>Column Name</th>
+                        <th>Data Type</th>
+                        <th>Nullable</th>
+                        <th>Order</th>
+                        <th>Comment</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for column in metadata.columns %}
+                    {% set qualified_name = column.attributes.get('qualifiedName', '') %}
+                    {% set table_name = 'unknown' %}
+                    {% if qualified_name and '/' in qualified_name %}
+                        {% set parts = qualified_name.split('/') %}
+                        {% if parts|length >= 4 %}
+                            {% set table_name = parts[-2] %}
+                        {% endif %}
+                    {% endif %}
+                    <tr>
+                        <td><span class="badge badge-info">{{ column.attributes.get('schemaName', 'unknown') }}</span></td>
+                        <td><strong>{{ table_name }}</strong></td>
+                        <td><strong>{{ column.name }}</strong></td>
+                        <td><span class="data-type">{{ column.attributes.get('dataType', 'unknown') }}</span></td>
+                        <td>
+                            {% if column.attributes.get('isNullable') %}
+                                <span class="badge badge-success">NULL</span>
+                            {% else %}
+                                <span class="badge badge-warning">NOT NULL</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ column.attributes.get('order', column.custom_attributes.get('ordinal_position', '')) }}</td>
+                        <td>
+                            {% if column.custom_attributes and column.custom_attributes.get('comment') %}
+                                <small style="color: #666;">{{ column.custom_attributes.comment }}</small>
+                            {% else %}
+                                <em style="color: #999;">No comment</em>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>📈 Summary Statistics</h2>
+    <div class="stats">
+        <div class="stat-item">
+            <div class="stat-number">{{ metadata.schemas|length }}</div>
+            <div class="stat-label">Total Schemas</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-number">{{ metadata.tables|length }}</div>
+            <div class="stat-label">Total Tables</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-number">{{ metadata.columns|length }}</div>
+            <div class="stat-label">Total Columns</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-number">{{ (metadata.columns|length / metadata.tables|length)|round(1) if metadata.tables|length > 0 else 0 }}</div>
+            <div class="stat-label">Avg Columns/Table</div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>🔗 API Access</h2>
+    <p>Access this data programmatically:</p>
+    <pre><code>GET /api/metadata/{{ connection_id }}</code></pre>
+    <p>Or use the command line tool:</p>
+    <pre><code>python frontend/app.py {{ connection_id }}</code></pre>
+</div>
+{% endblock %}

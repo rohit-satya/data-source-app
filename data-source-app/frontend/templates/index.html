@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}Available Connections - Metadata Frontend{% endblock %}
+
+{% block header_title %}Available Connections{% endblock %}
+{% block header_subtitle %}Select a connection to view its metadata{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>📊 Available Connections</h2>
+    <p>Choose a connection to view its latest metadata and schema information.</p>
+    
+    {% if connections %}
+        <div class="connection-list">
+            {% for connection in connections %}
+            <div class="connection-card">
+                <h3>{{ connection.connection_id }}</h3>
+                <p><strong>Connector:</strong> {{ connection.connector_name }}</p>
+                <p><strong>Latest Sync:</strong> {{ connection.latest_sync.strftime('%Y-%m-%d %H:%M:%S') }}</p>
+                <p><strong>Sync Count:</strong> {{ connection.sync_count }}</p>
+                <a href="/metadata/{{ connection.connection_id }}" class="btn">View Metadata</a>
+            </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="error">
+            <h3>No Connections Found</h3>
+            <p>No completed sync runs found in the database. Please run metadata extraction first:</p>
+            <pre><code>python -m src.app scan --schema dsa_ecommerce --format postgres</code></pre>
+        </div>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h2>🔧 API Endpoints</h2>
+    <p>You can also access the data programmatically using these API endpoints:</p>
+    <ul>
+        <li><code>GET /api/connections</code> - List all available connections</li>
+        <li><code>GET /api/metadata/&lt;connection_id&gt;</code> - Get metadata for a specific connection</li>
+    </ul>
+</div>
+{% endblock %}
