@@ -160,7 +160,7 @@ def scan(
         metadata_exporter = MetadataExporter(config, database_service)
         
         # Export metadata using the exporter
-        export_results = metadata_exporter.export_metadata(schemas, output_format)
+        export_results = metadata_exporter.export_metadata(schemas, output_format, sync_id)
         
         # Display export results
         for format_name, result in export_results.items():
@@ -355,7 +355,7 @@ def quality_metrics(
         metadata_exporter = MetadataExporter(config, database_service)
         
         # Export quality metrics using the exporter
-        export_results = metadata_exporter.export_quality_metrics(metrics, output_format)
+        export_results = metadata_exporter.export_quality_metrics(metrics, output_format, sync_id)
         
         # Display export results
         for format_name, result in export_results.items():

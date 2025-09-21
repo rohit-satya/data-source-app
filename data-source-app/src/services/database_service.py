@@ -3,12 +3,13 @@
 import logging
 from typing import Optional, Dict, Any, List
 from datetime import datetime
+from contextlib import contextmanager
 
 from ..db.connection import DatabaseConnection
 from ..config import AppConfig
 from ..credentials.manager import CredentialsManager, DatabaseCredentials
 from ..connector import SourceConnection
-from ..exporters.postgres_exporter import PostgreSQLExporter
+from ..exporters.normalized_postgres_exporter import NormalizedPostgreSQLExporter
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ class DatabaseService:
         self.config = config
         self._production_connection: Optional[DatabaseConnection] = None
         self._credentials_manager: Optional[CredentialsManager] = None
-        self._postgres_exporter: Optional[PostgreSQLExporter] = None
+        self._postgres_exporter: Optional[NormalizedPostgreSQLExporter] = None
     
     def get_production_connection(self) -> DatabaseConnection:
         """Get connection to dsa_production database.
@@ -44,6 +45,17 @@ class DatabaseService:
             logger.info("Connected to dsa_production database")
         
         return self._production_connection
+    
+    @contextmanager
+    def get_production_connection_with_schema(self):
+        """Get production database connection with dsa_production schema in search path."""
+        with self.get_production_connection().get_connection() as conn:
+            # Set search path to include dsa_production schema
+            with conn.cursor() as cur:
+                cur.execute("SET search_path TO dsa_production, public")
+                # Commit the search path change
+                conn.commit()
+            yield conn
     
     def get_credentials_manager(self) -> CredentialsManager:
         """Get credentials manager instance.
@@ -107,36 +119,36 @@ class DatabaseService:
             }
         )
     
-    def get_postgres_exporter(self) -> PostgreSQLExporter:
-        """Get PostgreSQL exporter instance.
+    def get_postgres_exporter(self) -> NormalizedPostgreSQLExporter:
+        """Get normalized PostgreSQL exporter instance.
         
         Returns:
-            PostgreSQLExporter instance
+            NormalizedPostgreSQLExporter instance
         """
         if self._postgres_exporter is None:
             production_connection = self.get_production_connection()
-            self._postgres_exporter = PostgreSQLExporter(self.config, production_connection)
+            self._postgres_exporter = NormalizedPostgreSQLExporter(self.config, production_connection)
         
         return self._postgres_exporter
     
-    def export_metadata(self, schemas: List[Any], run_id: Optional[int] = None) -> Dict[str, Any]:
-        """Export metadata to PostgreSQL database.
+    def export_metadata(self, schemas: List[Any], sync_id: Optional[str] = None) -> Dict[str, Any]:
+        """Export normalized metadata to PostgreSQL database.
         
         Args:
-            schemas: List of schema metadata objects
-            run_id: Optional run ID for tracking
+            schemas: List of normalized schema metadata objects
+            sync_id: Optional sync ID for tracking
             
         Returns:
             Dictionary with export results
         """
         try:
             exporter = self.get_postgres_exporter()
-            actual_run_id = exporter.export_metadata(schemas, run_id)
+            actual_sync_id = exporter.export_metadata(schemas, sync_id)
             
             return {
                 'success': True,
-                'run_id': actual_run_id,
-                'message': f"PostgreSQL export: run_id {actual_run_id}"
+                'sync_id': actual_sync_id,
+                'message': f"PostgreSQL export: sync_id {actual_sync_id}"
             }
         except Exception as e:
             logger.error(f"PostgreSQL metadata export failed: {e}")
@@ -146,24 +158,24 @@ class DatabaseService:
                 'message': f"PostgreSQL export failed: {e}"
             }
     
-    def export_quality_metrics(self, metrics: Dict[str, List[Any]], run_id: Optional[int] = None) -> Dict[str, Any]:
+    def export_quality_metrics(self, metrics: Dict[str, List[Any]], sync_id: Optional[str] = None) -> Dict[str, Any]:
         """Export quality metrics to PostgreSQL database.
         
         Args:
             metrics: Dictionary of quality metrics
-            run_id: Optional run ID for tracking
+            sync_id: Optional sync ID for tracking
             
         Returns:
             Dictionary with export results
         """
         try:
             exporter = self.get_postgres_exporter()
-            actual_run_id = exporter.export_quality_metrics(metrics, run_id)
+            actual_sync_id = exporter.export_quality_metrics(metrics, sync_id)
             
             return {
                 'success': True,
-                'run_id': actual_run_id,
-                'message': f"PostgreSQL export: run_id {actual_run_id}"
+                'sync_id': actual_sync_id,
+                'message': f"PostgreSQL export: sync_id {actual_sync_id}"
             }
         except Exception as e:
             logger.error(f"PostgreSQL quality metrics export failed: {e}")

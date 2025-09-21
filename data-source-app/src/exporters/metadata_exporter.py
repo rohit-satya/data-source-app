@@ -29,12 +29,13 @@ class MetadataExporter:
         self.json_exporter = JSONExporter(config)
         self.csv_exporter = CSVExporter(config)
     
-    def export_metadata(self, schemas: List[Any], output_format: str) -> Dict[str, Any]:
+    def export_metadata(self, schemas: List[Any], output_format: str, sync_id: Optional[str] = None) -> Dict[str, Any]:
         """Export metadata in the specified format.
         
         Args:
             schemas: List of schema metadata objects
             output_format: Output format (json, csv, postgres, all)
+            sync_id: Optional sync ID for PostgreSQL export
             
         Returns:
             Dictionary with export results
@@ -43,7 +44,7 @@ class MetadataExporter:
         
         if output_format in ["postgres", "all"]:
             try:
-                result = self.database_service.export_metadata(schemas)
+                result = self.database_service.export_metadata(schemas, sync_id)
                 results['postgres'] = result
             except Exception as e:
                 logger.error(f"PostgreSQL export failed: {e}")
@@ -88,12 +89,13 @@ class MetadataExporter:
         
         return results
     
-    def export_quality_metrics(self, metrics: Dict[str, List[Any]], output_format: str) -> Dict[str, Any]:
+    def export_quality_metrics(self, metrics: Dict[str, List[Any]], output_format: str, sync_id: Optional[str] = None) -> Dict[str, Any]:
         """Export quality metrics in the specified format.
         
         Args:
             metrics: Dictionary of quality metrics
             output_format: Output format (json, csv, postgres, all)
+            sync_id: Optional sync ID for PostgreSQL export
             
         Returns:
             Dictionary with export results
@@ -102,7 +104,7 @@ class MetadataExporter:
         
         if output_format in ["postgres", "all"]:
             try:
-                result = self.database_service.export_quality_metrics(metrics)
+                result = self.database_service.export_quality_metrics(metrics, sync_id)
                 results['postgres'] = result
             except Exception as e:
                 logger.error(f"PostgreSQL export failed: {e}")

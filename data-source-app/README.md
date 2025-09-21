@@ -56,7 +56,7 @@ cd postgres-metadata-app
 pip install -r requirements.txt
 ```
 
-3. Configure your database connection in `config.yml`:
+3. Configure your database connection in `config.yml`: 
 ```yaml
 database:
   dsn: "postgresql://username:password@localhost:5432/database_name"
