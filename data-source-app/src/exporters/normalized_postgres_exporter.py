@@ -89,12 +89,18 @@ class NormalizedPostgreSQLExporter:
                     raise e
     
     def export_quality_metrics(self, metrics: Dict[str, List[TableQualityMetrics]], 
-                              sync_id: Optional[str] = None) -> str:
+                              sync_id: Optional[str] = None, 
+                              connection_name: str = "test-connection",
+                              connector_name: str = "postgres",
+                              tenant_id: str = "default") -> str:
         """Export quality metrics to PostgreSQL database.
         
         Args:
             metrics: Dictionary of schema metrics
             sync_id: Optional sync ID for tracking
+            connection_name: Name of the connection
+            connector_name: Name of the connector
+            tenant_id: Tenant identifier
             
         Returns:
             Sync ID of the extraction
@@ -113,10 +119,10 @@ class NormalizedPostgreSQLExporter:
                     
                     # Create or get sync ID
                     if sync_id is None:
-                        sync_id = self._create_quality_metrics_run(cur, metrics)
+                        sync_id = self._create_quality_metrics_run(cur, metrics, connection_name, connector_name, tenant_id)
                     else:
                         # Ensure sync_id exists in quality_metrics_runs table
-                        self._ensure_quality_metrics_run_exists(cur, sync_id, metrics)
+                        self._ensure_quality_metrics_run_exists(cur, sync_id, metrics, connection_name, connector_name, tenant_id)
                     
                     # Calculate totals
                     total_tables = sum(len(table_metrics) for table_metrics in metrics.values())
@@ -274,13 +280,23 @@ class NormalizedPostgreSQLExporter:
             WHERE sync_id = %s
         """, (status, error_message, sync_id))
     
-    def _create_quality_metrics_run(self, cur, metrics: Dict[str, List[TableQualityMetrics]]) -> str:
+    def _create_quality_metrics_run(self, cur, metrics: Dict[str, List[TableQualityMetrics]], 
+                                   connection_name: str = "test-connection", 
+                                   connector_name: str = "postgres", 
+                                   tenant_id: str = "default") -> str:
         """Create a new quality metrics run record."""
         # Generate a new sync_id for quality metrics
         import uuid
         sync_id = str(uuid.uuid4())
         
         target_schemas = list(metrics.keys())
+        
+        # First ensure sync_id exists in sync_runs table
+        cur.execute("""
+            INSERT INTO sync_runs (sync_id, connector_name, connection_name, tenant_id, status)
+            VALUES (%s, %s, %s, %s, 'running')
+            ON CONFLICT (sync_id) DO NOTHING
+        """, (sync_id, connector_name, connection_name, tenant_id))
         
         cur.execute("""
             INSERT INTO quality_metrics_runs (sync_id, target_schemas, total_tables, total_columns, status)
@@ -297,16 +313,19 @@ class NormalizedPostgreSQLExporter:
             WHERE sync_id = %s
         """, (total_tables, total_columns, sync_id))
     
-    def _ensure_quality_metrics_run_exists(self, cur, sync_id: str, metrics: Dict[str, List[TableQualityMetrics]]):
+    def _ensure_quality_metrics_run_exists(self, cur, sync_id: str, metrics: Dict[str, List[TableQualityMetrics]], 
+                                          connection_name: str = "test-connection", 
+                                          connector_name: str = "postgres", 
+                                          tenant_id: str = "default"):
         """Ensure sync_id exists in quality_metrics_runs table."""
         target_schemas = list(metrics.keys())
         
         # First ensure sync_id exists in sync_runs table
         cur.execute("""
             INSERT INTO sync_runs (sync_id, connector_name, connection_name, tenant_id, status)
-            VALUES (%s, 'postgres', 'test-connection', 'default', 'running')
+            VALUES (%s, %s, %s, %s, 'running')
             ON CONFLICT (sync_id) DO NOTHING
-        """, (sync_id,))
+        """, (sync_id, connector_name, connection_name, tenant_id))
         
         # Then insert into quality_metrics_runs
         cur.execute("""

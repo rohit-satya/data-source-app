@@ -89,13 +89,19 @@ class MetadataExporter:
         
         return results
     
-    def export_quality_metrics(self, metrics: Dict[str, List[Any]], output_format: str, sync_id: Optional[str] = None) -> Dict[str, Any]:
+    def export_quality_metrics(self, metrics: Dict[str, List[Any]], output_format: str, sync_id: Optional[str] = None,
+                              connection_name: str = "test-connection", 
+                              connector_name: str = "postgres", 
+                              tenant_id: str = "default") -> Dict[str, Any]:
         """Export quality metrics in the specified format.
         
         Args:
             metrics: Dictionary of quality metrics
             output_format: Output format (json, csv, postgres, all)
             sync_id: Optional sync ID for PostgreSQL export
+            connection_name: Name of the connection
+            connector_name: Name of the connector
+            tenant_id: Tenant identifier
             
         Returns:
             Dictionary with export results
@@ -104,7 +110,7 @@ class MetadataExporter:
         
         if output_format in ["postgres", "all"]:
             try:
-                result = self.database_service.export_quality_metrics(metrics, sync_id)
+                result = self.database_service.export_quality_metrics(metrics, sync_id, connection_name, connector_name, tenant_id)
                 results['postgres'] = result
             except Exception as e:
                 logger.error(f"PostgreSQL export failed: {e}")

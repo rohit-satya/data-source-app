@@ -115,7 +115,8 @@ class DatabaseService:
                 'database_name': credentials.database_name,
                 'username': credentials.username,
                 'password': credentials.password,
-                'ssl_mode': credentials.ssl_mode
+                'ssl_mode': credentials.ssl_mode,
+                'connection_name': connection_id  # Pass the actual connection_id
             }
         )
     
@@ -158,19 +159,25 @@ class DatabaseService:
                 'message': f"PostgreSQL export failed: {e}"
             }
     
-    def export_quality_metrics(self, metrics: Dict[str, List[Any]], sync_id: Optional[str] = None) -> Dict[str, Any]:
+    def export_quality_metrics(self, metrics: Dict[str, List[Any]], sync_id: Optional[str] = None, 
+                              connection_name: str = "test-connection", 
+                              connector_name: str = "postgres", 
+                              tenant_id: str = "default") -> Dict[str, Any]:
         """Export quality metrics to PostgreSQL database.
         
         Args:
             metrics: Dictionary of quality metrics
             sync_id: Optional sync ID for tracking
+            connection_name: Name of the connection
+            connector_name: Name of the connector
+            tenant_id: Tenant identifier
             
         Returns:
             Dictionary with export results
         """
         try:
             exporter = self.get_postgres_exporter()
-            actual_sync_id = exporter.export_quality_metrics(metrics, sync_id)
+            actual_sync_id = exporter.export_quality_metrics(metrics, sync_id, connection_name, connector_name, tenant_id)
             
             return {
                 'success': True,

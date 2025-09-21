@@ -355,7 +355,12 @@ def quality_metrics(
         metadata_exporter = MetadataExporter(config, database_service)
         
         # Export quality metrics using the exporter
-        export_results = metadata_exporter.export_quality_metrics(metrics, output_format, sync_id)
+        export_results = metadata_exporter.export_quality_metrics(
+            metrics, output_format, sync_id, 
+            connection_name=connection_id,
+            connector_name=source_connection.source_type,
+            tenant_id="default"
+        )
         
         # Display export results
         for format_name, result in export_results.items():
