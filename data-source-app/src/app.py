@@ -63,7 +63,8 @@ def get_source_connection(connection_id: str = "test") -> Optional[SourceConnect
     try:
         # Use DatabaseService to get credentials and create source connection
         database_service = DatabaseService(config)
-        source_connection = database_service.create_source_connection(connection_id)
+        encryption_key = config.get_encryption_key()
+        source_connection = database_service.create_source_connection(connection_id, encryption_key)
         
         if not source_connection:
             console.print(f"❌ No credentials found for connection_id: {connection_id}", style="red")
@@ -598,7 +599,8 @@ def credentials_add(
         
         # Use DatabaseService to manage credentials
         database_service = DatabaseService(config)
-        credentials_manager = database_service.get_credentials_manager()
+        encryption_key = config.get_encryption_key()
+        credentials_manager = database_service.get_credentials_manager(encryption_key)
         
         # Create credentials object
         credentials = DatabaseCredentials(
@@ -650,7 +652,8 @@ def credentials_list(
         
         # Use DatabaseService to manage credentials
         database_service = DatabaseService(config)
-        credentials_manager = database_service.get_credentials_manager()
+        encryption_key = config.get_encryption_key()
+        credentials_manager = database_service.get_credentials_manager(encryption_key)
         
         # List credentials
         credentials_list = credentials_manager.list_credentials()
@@ -707,7 +710,8 @@ def credentials_delete(
         
         # Use DatabaseService to manage credentials
         database_service = DatabaseService(config)
-        credentials_manager = database_service.get_credentials_manager()
+        encryption_key = config.get_encryption_key()
+        credentials_manager = database_service.get_credentials_manager(encryption_key)
         
         # Confirm deletion
         if not typer.confirm(f"Are you sure you want to delete credentials for '{connection_id}'?"):
@@ -730,10 +734,19 @@ def credentials_delete(
 
 
 @app.command()
-def key_info():
+def key_info(
+    config_file: str = typer.Option("config.yml", "--config", "-c", help="Path to configuration file")
+):
     """Show information about the stored encryption key."""
+    global config
+    
     try:
-        encryption = get_encryption_instance()
+        # Load configuration
+        config = AppConfig.from_file(config_file)
+        config.load_environment_variables()
+        
+        encryption_key = config.get_encryption_key()
+        encryption = get_encryption_instance(encryption_key)
         key_info = encryption.get_stored_key_info()
         
         if key_info:
@@ -752,10 +765,19 @@ def key_info():
 
 
 @app.command()
-def key_generate():
+def key_generate(
+    config_file: str = typer.Option("config.yml", "--config", "-c", help="Path to configuration file")
+):
     """Generate and store a new encryption key."""
+    global config
+    
     try:
-        encryption = get_encryption_instance()
+        # Load configuration
+        config = AppConfig.from_file(config_file)
+        config.load_environment_variables()
+        
+        encryption_key = config.get_encryption_key()
+        encryption = get_encryption_instance(encryption_key)
         
         if encryption.store_current_key():
             console.print("✅ New encryption key generated and stored", style="green")
@@ -772,10 +794,19 @@ def key_generate():
 
 
 @app.command()
-def key_delete():
+def key_delete(
+    config_file: str = typer.Option("config.yml", "--config", "-c", help="Path to configuration file")
+):
     """Delete the stored encryption key."""
+    global config
+    
     try:
-        encryption = get_encryption_instance()
+        # Load configuration
+        config = AppConfig.from_file(config_file)
+        config.load_environment_variables()
+        
+        encryption_key = config.get_encryption_key()
+        encryption = get_encryption_instance(encryption_key)
         
         if not encryption.key_storage.key_exists():
             console.print("ℹ️  No encryption key is currently stored", style="yellow")

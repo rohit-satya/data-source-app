@@ -66,6 +66,12 @@ class LineageConfig:
 
 
 @dataclass
+class EncryptionConfig:
+    """Encryption configuration."""
+    master_key: Optional[str] = None
+
+
+@dataclass
 class AppConfig:
     """Main application configuration."""
     database: DatabaseConfig
@@ -74,6 +80,7 @@ class AppConfig:
     output: OutputConfig
     business_context: BusinessContextConfig
     lineage: LineageConfig
+    encryption: EncryptionConfig
 
     @classmethod
     def from_file(cls, config_path: str) -> "AppConfig":
@@ -130,14 +137,24 @@ class AppConfig:
             parse_view_dependencies=lineage_data.get('parse_view_dependencies', True)
         )
         
+        encryption_data = config_data.get('encryption', {})
+        encryption = EncryptionConfig(
+            master_key=encryption_data.get('master_key')
+        )
+        
         return cls(
             database=database,
             schemas=schemas,
             metrics=metrics,
             output=output,
             business_context=business_context,
-            lineage=lineage
+            lineage=lineage,
+            encryption=encryption
         )
+
+    def get_encryption_key(self) -> Optional[str]:
+        """Get the encryption key from config."""
+        return self.encryption.master_key
 
     def load_environment_variables(self) -> None:
         """Load configuration from environment variables if not set in config file."""

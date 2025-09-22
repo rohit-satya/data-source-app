@@ -57,44 +57,49 @@ class DatabaseService:
                 conn.commit()
             yield conn
     
-    def get_credentials_manager(self) -> CredentialsManager:
+    def get_credentials_manager(self, encryption_key: str = None) -> CredentialsManager:
         """Get credentials manager instance.
         
+        Args:
+            encryption_key: Optional encryption key for password encryption
+            
         Returns:
             CredentialsManager instance
         """
         if self._credentials_manager is None:
             production_connection = self.get_production_connection()
-            self._credentials_manager = CredentialsManager(production_connection)
+            self._credentials_manager = CredentialsManager(production_connection, encryption_key)
         
         return self._credentials_manager
     
-    def get_credentials(self, connection_id: str = "test") -> Optional[DatabaseCredentials]:
+    def get_credentials(self, connection_id: str = "test", encryption_key: str = None) -> Optional[DatabaseCredentials]:
         """Fetch credentials for a specific connection ID.
         
         Args:
             connection_id: Connection identifier
+            encryption_key: Optional encryption key for password decryption
             
         Returns:
             DatabaseCredentials object or None if not found
         """
         try:
-            credentials_manager = self.get_credentials_manager()
+            credentials_manager = self.get_credentials_manager(encryption_key)
             return credentials_manager.get_credentials(connection_id)
         except Exception as e:
             logger.error(f"Failed to get credentials for {connection_id}: {e}")
             return None
     
-    def create_source_connection(self, connection_id: str = "test") -> Optional[SourceConnection]:
+    def create_source_connection(self, connection_id: str = "test", encryption_key: str = None) -> Optional[SourceConnection]:
         """Create a source connection from stored credentials.
         
         Args:
             connection_id: Connection identifier
+            encryption_key: Optional encryption key for password decryption
             
         Returns:
             SourceConnection object or None if failed
         """
-        credentials = self.get_credentials(connection_id)
+        credentials = self.get_credentials(connection_id, encryption_key)
         if not credentials:
             logger.error(f"No credentials found for connection_id: {connection_id}")
             return None

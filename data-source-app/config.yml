@@ -3,7 +3,7 @@
 # Database Connection
 database:
   # Use DSN format for connection
-  dsn: "postgresql://rohit.satyainti@localhost:5432/postgres"
+  dsn: "postgres://avnadmin:AVNS_nmx9HbYhr090IKP5Fvt@pg-1ccc75b3-temp-prj.c.aivencloud.com:12124/dsa_production?sslmode=require"
   # Alternative: individual connection parameters
   # host: localhost
   # port: 5432
@@ -55,3 +55,8 @@ lineage:
   extract_foreign_keys: true
   # Parse view definitions for dependencies
   parse_view_dependencies: true
+
+# Encryption configuration
+encryption:
+  # Master key for password encryption (base64 encoded)
+  master_key: "kvKA1MlWwnmRSjSR4_11yYVHoXngh67NqMNw9lCInl8="

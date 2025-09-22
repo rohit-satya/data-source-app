@@ -232,6 +232,10 @@ class PasswordEncryption:
         return self.key_storage.delete_key()
 
 
-def get_encryption_instance() -> PasswordEncryption:
-    """Get a shared encryption instance."""
-    return PasswordEncryption()
+def get_encryption_instance(master_key: str = None) -> PasswordEncryption:
+    """Get a shared encryption instance.
+    
+    Args:
+        master_key: Optional master key to use for encryption
+    """
+    return PasswordEncryption(master_key)

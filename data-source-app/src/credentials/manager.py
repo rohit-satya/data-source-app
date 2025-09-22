@@ -28,14 +28,15 @@ class DatabaseCredentials:
 class CredentialsManager:
     """Manages database credentials storage and retrieval."""
     
-    def __init__(self, db_connection: DatabaseConnection):
+    def __init__(self, db_connection: DatabaseConnection, encryption_key: str = None):
         """Initialize credentials manager.
         
         Args:
             db_connection: Database connection to dsa_production schema
+            encryption_key: Optional encryption key for password encryption
         """
         self.db_connection = db_connection
-        self.encryption = get_encryption_instance()
+        self.encryption = get_encryption_instance(encryption_key)
     
     def get_credentials(self, connection_id: str = "test") -> Optional[DatabaseCredentials]:
         """Get credentials for a specific connection ID.
