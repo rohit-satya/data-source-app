@@ -132,7 +132,7 @@ def scan(
         console.print(f"✅ Connected to {conn_info.get('source_type', 'unknown')}: {conn_info.get('server_version', 'unknown')}", style="green")
         
         # Determine target schemas
-        target_schemas = [schema] if schema else config.schemas
+        target_schemas = [schema] if schema else []
         if not target_schemas:
             target_schemas = connector.get_available_schemas()
         
@@ -327,7 +327,7 @@ def quality_metrics(
         console.print(f"✅ Connected to {conn_info.get('source_type', 'unknown')}", style="green")
         
         # Determine target schemas
-        target_schemas = [schema] if schema else config.schemas
+        target_schemas = [schema] if schema else []
         if not target_schemas:
             target_schemas = connector.get_available_schemas()
         
@@ -818,6 +818,86 @@ def source_types():
         console.print(table)
     
     except Exception as e:
+        console.print(f"❌ Error: {e}", style="red")
+        raise typer.Exit(1)
+
+
+@app.command()
+def incremental_diff(
+    connection_id: str = typer.Option(..., "--connection-id", help="Connection ID to compare"),
+    format: str = typer.Option("postgres", "--format", "-f", help="Output format (postgres, json)"),
+    config_file: str = typer.Option("config.yml", "--config", "-c", help="Path to configuration file"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose logging"),
+    log_file: Optional[str] = typer.Option(None, "--log-file", help="Log file path")
+):
+    """Run incremental diff between the last two sync runs for a connection."""
+    # Setup logging
+    log_level = "DEBUG" if verbose else "INFO"
+    setup_logging(log_level, log_file)
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # Load configuration
+        config = AppConfig.from_file(config_file)
+        config.load_environment_variables()
+        
+        console.print(f"🔍 Starting incremental diff for connection: {connection_id}", style="blue")
+        console.print(f"📊 Output format: {format}", style="blue")
+        
+        # Import the incremental diff service
+        from .services.incremental_diff_service import IncrementalDiffService
+        
+        # Create the service
+        diff_service = IncrementalDiffService(config)
+        
+        # Run the incremental diff
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console
+        ) as progress:
+            task = progress.add_task("Running incremental diff...", total=None)
+            
+            result = diff_service.run_incremental_diff(connection_id, format)
+            
+            if result["success"]:
+                progress.update(task, description="✅ Incremental diff completed")
+                
+                # Display results
+                console.print(f"\n🎉 Incremental diff completed successfully!", style="bold green")
+                console.print(f"🆔 Diff Sync ID: {result['diff_sync_id']}", style="green")
+                console.print(f"🔌 Connection: {result['connection_id']}", style="green")
+                console.print(f"📊 Sync Run 1 (older): {result['sync_run_1_id']}", style="blue")
+                console.print(f"📊 Sync Run 2 (newer): {result['sync_run_2_id']}", style="blue")
+                
+                # Display change summary
+                table = Table(title="Change Summary")
+                table.add_column("Asset Type", style="cyan")
+                table.add_column("Changes", style="magenta")
+                
+                table.add_row("Schemas", str(result['schemas_changed']))
+                table.add_row("Tables", str(result['tables_changed']))
+                table.add_row("Columns", str(result['columns_changed']))
+                table.add_row("Total", str(result['total_changes']))
+                
+                console.print(table)
+                
+                if result['total_changes'] > 0:
+                    console.print(f"\n💡 View detailed changes in dsa_production.incremental_diff_* tables", style="blue")
+                    console.print(f"💡 Query diff summary: SELECT * FROM dsa_production.diff_summary WHERE diff_sync_id = '{result['diff_sync_id']}'", style="blue")
+                else:
+                    console.print(f"\n✨ No changes detected between the two sync runs!", style="green")
+                
+            else:
+                progress.update(task, description="❌ Incremental diff failed")
+                console.print(f"❌ Incremental diff failed: {result['error']}", style="red")
+                raise typer.Exit(1)
+        
+    except FileNotFoundError as e:
+        console.print(f"❌ Configuration file not found: {e}", style="red")
+        raise typer.Exit(1)
+    except Exception as e:
+        logger.error(f"Error during incremental diff: {e}")
         console.print(f"❌ Error: {e}", style="red")
         raise typer.Exit(1)
 

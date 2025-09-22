@@ -33,7 +33,7 @@ class NormalizedEntityBuilder:
     
     def _build_qualified_name(self, *parts: str) -> str:
         """Build qualified name from parts."""
-        return "/".join([self.tenant_id, self.connector_name, str(int(time.time())), *parts])
+        return "/".join([self.tenant_id, self.connector_name, *parts])
     
     def create_database(self, database_name: str) -> NormalizedDatabase:
         """Create a normalized database entity.
@@ -192,6 +192,8 @@ class NormalizedEntityBuilder:
                 "databaseQualifiedName": database_qualified_name,
                 "schemaName": schema_name,
                 "schemaQualifiedName": schema_qualified_name,
+                "tableName": table_name,
+                "tableQualifiedName": table_qualified_name,
                 "dataType": data_type,
                 "isNullable": is_nullable,
                 "order": ordinal_position
