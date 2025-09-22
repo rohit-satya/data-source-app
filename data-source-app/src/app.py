@@ -406,8 +406,6 @@ def _display_metadata_summary(schemas):
     table.add_row("Schemas", str(len(schemas)))
     table.add_row("Tables", str(total_tables))
     table.add_row("Columns", str(total_columns))
-    table.add_row("Constraints", str(total_constraints))
-    table.add_row("Indexes", str(total_indexes))
     
     console.print(table)
 

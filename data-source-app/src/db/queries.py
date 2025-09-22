@@ -71,6 +71,128 @@ class MetadataQueries:
             AND NOT a.attisdropped
         """
     
+    def get_table_constraints(self, schema_name: str, table_name: str) -> str:
+        """Get table constraints including primary key, foreign keys, and unique constraints."""
+        return """
+            SELECT 
+                tc.constraint_name,
+                tc.constraint_type,
+                kcu.column_name,
+                ccu.table_schema AS foreign_table_schema,
+                ccu.table_name AS foreign_table_name,
+                ccu.column_name AS foreign_column_name
+            FROM information_schema.table_constraints AS tc 
+            LEFT JOIN information_schema.key_column_usage AS kcu
+                ON tc.constraint_name = kcu.constraint_name
+                AND tc.table_schema = kcu.table_schema
+            LEFT JOIN information_schema.constraint_column_usage AS ccu
+                ON ccu.constraint_name = tc.constraint_name
+                AND ccu.table_schema = tc.table_schema
+            WHERE tc.table_schema = %s 
+            AND tc.table_name = %s
+            AND tc.constraint_type IN ('PRIMARY KEY', 'FOREIGN KEY', 'UNIQUE')
+        """
+    
+    def get_table_indexes(self, schema_name: str, table_name: str) -> str:
+        """Get table indexes and their columns."""
+        return """
+            SELECT 
+                i.relname as index_name,
+                a.attname as column_name,
+                ix.indisunique as is_unique,
+                ix.indisprimary as is_primary
+            FROM pg_class t
+            JOIN pg_index ix ON t.oid = ix.indrelid
+            JOIN pg_class i ON i.oid = ix.indexrelid
+            JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(ix.indkey)
+            JOIN pg_namespace n ON n.oid = t.relnamespace
+            WHERE n.nspname = %s 
+            AND t.relname = %s
+            AND t.relkind = 'r'
+        """
+    
+    def get_table_partition_info(self, schema_name: str, table_name: str) -> str:
+        """Get table partition information."""
+        return """
+            SELECT 
+                c.relname as table_name,
+                c.relkind as relation_type,
+                pg_get_expr(c.relpartbound, c.oid) as partition_expression,
+                pg_get_expr(c.relpartbound, c.oid) as partition_bound
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = %s 
+            AND c.relname = %s
+            AND c.relkind IN ('r', 'p')
+        """
+    
+    def get_table_tablespace(self, schema_name: str, table_name: str) -> str:
+        """Get table tablespace information."""
+        return """
+            SELECT 
+                t.spcname as tablespace_name
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            LEFT JOIN pg_tablespace t ON t.oid = c.reltablespace
+            WHERE n.nspname = %s 
+            AND c.relname = %s
+            AND c.relkind = 'r'
+        """
+    
+    def get_table_partition_relationships(self, schema_name: str, table_name: str) -> str:
+        """Get partition relationships - which tables this table is partitioned from/to."""
+        return """
+            -- Find parent partitions (tables this table is partitioned from)
+            SELECT 
+                p.relname,
+                pn.nspname,
+                p.relkind,
+                true as is_parent
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            JOIN pg_inherits i ON i.inhrelid = c.oid
+            JOIN pg_class p ON p.oid = i.inhparent
+            JOIN pg_namespace pn ON pn.oid = p.relnamespace
+            WHERE n.nspname = %s AND c.relname = %s
+            
+            UNION ALL
+            
+            -- Find child partitions (tables that are partitions of this table)
+            SELECT 
+                c.relname,
+                n.nspname,
+                c.relkind,
+                false as is_parent
+            FROM pg_class p
+            JOIN pg_namespace pn ON pn.oid = p.relnamespace
+            JOIN pg_inherits i ON i.inhparent = p.oid
+            JOIN pg_class c ON c.oid = i.inhrelid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE pn.nspname = %s AND p.relname = %s
+            
+            ORDER BY relname
+        """
+    
+    def get_table_foreign_relationships(self, schema_name: str, table_name: str) -> str:
+        """Get foreign key relationships - which tables this table references."""
+        return """
+            SELECT DISTINCT
+                ccu.table_schema AS foreign_table_schema,
+                ccu.table_name AS foreign_table_name,
+                tc.constraint_name
+            FROM information_schema.table_constraints AS tc 
+            JOIN information_schema.key_column_usage AS kcu
+                ON tc.constraint_name = kcu.constraint_name
+                AND tc.table_schema = kcu.table_schema
+            JOIN information_schema.constraint_column_usage AS ccu
+                ON ccu.constraint_name = tc.constraint_name
+                AND ccu.table_schema = tc.table_schema
+            WHERE tc.table_schema = %s 
+            AND tc.table_name = %s
+            AND tc.constraint_type = 'FOREIGN KEY'
+            ORDER BY ccu.table_schema, ccu.table_name
+        """
+    
     def get_primary_keys(self, schema_name: str, table_name: str) -> str:
         """Get primary key columns for a table."""
         return """

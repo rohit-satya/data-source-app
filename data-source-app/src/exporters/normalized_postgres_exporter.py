@@ -200,16 +200,7 @@ class NormalizedPostgreSQLExporter:
                     last_sync_run, last_sync_run_at, connector_name,
                     attributes, custom_attributes
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (sync_id, name) DO UPDATE SET
-                    type_name = EXCLUDED.type_name,
-                    status = EXCLUDED.status,
-                    connection_name = EXCLUDED.connection_name,
-                    tenant_id = EXCLUDED.tenant_id,
-                    last_sync_run = EXCLUDED.last_sync_run,
-                    last_sync_run_at = EXCLUDED.last_sync_run_at,
-                    connector_name = EXCLUDED.connector_name,
-                    attributes = EXCLUDED.attributes,
-                    custom_attributes = EXCLUDED.custom_attributes
+
             """, (
                 sync_id, schema.typeName, schema.status, schema.name,
                 schema.connectionName, schema.tenantId, schema.lastSyncRun,
@@ -227,16 +218,7 @@ class NormalizedPostgreSQLExporter:
                         last_sync_run, last_sync_run_at, connector_name,
                         attributes, custom_attributes
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (sync_id, name) DO UPDATE SET
-                        type_name = EXCLUDED.type_name,
-                        status = EXCLUDED.status,
-                        connection_name = EXCLUDED.connection_name,
-                        tenant_id = EXCLUDED.tenant_id,
-                        last_sync_run = EXCLUDED.last_sync_run,
-                        last_sync_run_at = EXCLUDED.last_sync_run_at,
-                        connector_name = EXCLUDED.connector_name,
-                        attributes = EXCLUDED.attributes,
-                        custom_attributes = EXCLUDED.custom_attributes
+
                 """, (
                     sync_id, table.typeName, table.status, table.name,
                     table.connectionName, table.tenantId, table.lastSyncRun,
@@ -255,16 +237,7 @@ class NormalizedPostgreSQLExporter:
                             last_sync_run, last_sync_run_at, connector_name,
                             attributes, custom_attributes
                         ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (sync_id, name) DO UPDATE SET
-                            type_name = EXCLUDED.type_name,
-                            status = EXCLUDED.status,
-                            connection_name = EXCLUDED.connection_name,
-                            tenant_id = EXCLUDED.tenant_id,
-                            last_sync_run = EXCLUDED.last_sync_run,
-                            last_sync_run_at = EXCLUDED.last_sync_run_at,
-                            connector_name = EXCLUDED.connector_name,
-                            attributes = EXCLUDED.attributes,
-                            custom_attributes = EXCLUDED.custom_attributes
+
                     """, (
                         sync_id, column.typeName, column.status, column.name,
                         column.connectionName, column.tenantId, column.lastSyncRun,

@@ -124,12 +124,158 @@ class PostgreSQLSource:
         
         return schema_metadata
     
+    def _collect_table_metadata(self, schema_name: str, table_name: str, cur) -> Dict[str, Any]:
+        """Collect table metadata including constraints, indexes, partitions, and tablespace."""
+        metadata = {
+            'has_foreign_keys': False,
+            'is_partitioned': False,
+            'has_indexes': False,
+            'has_primary_key': False
+        }
+        
+        try:
+            # Check for foreign keys
+            cur.execute(self.queries.get_table_constraints(schema_name, table_name), (schema_name, table_name))
+            constraints = cur.fetchall()
+            
+            for constraint in constraints:
+                constraint_type = constraint[1]
+                if constraint_type == 'FOREIGN KEY':
+                    metadata['has_foreign_keys'] = True
+                elif constraint_type == 'PRIMARY KEY':
+                    metadata['has_primary_key'] = True
+            
+            # Check for indexes
+            cur.execute(self.queries.get_table_indexes(schema_name, table_name), (schema_name, table_name))
+            indexes = cur.fetchall()
+            if indexes:
+                metadata['has_indexes'] = True
+            
+            # Check for partition info
+            cur.execute(self.queries.get_table_partition_info(schema_name, table_name), (schema_name, table_name))
+            partition_info = cur.fetchone()
+            if partition_info and partition_info[1] == 'p':  # 'p' means partitioned table
+                metadata['is_partitioned'] = True
+            
+            # Get tablespace (only if not null)
+            cur.execute(self.queries.get_table_tablespace(schema_name, table_name), (schema_name, table_name))
+            tablespace_result = cur.fetchone()
+            if tablespace_result and tablespace_result[0]:
+                metadata['tablespace'] = tablespace_result[0]
+            
+            # Get partition relationships (only if they exist)
+            cur.execute(self.queries.get_table_partition_relationships(schema_name, table_name), 
+                       (schema_name, table_name, schema_name, table_name))
+            partition_relationships = cur.fetchall()
+            
+            if partition_relationships:
+                partitioned_from = []
+                partitioned_to = []
+                
+                for rel in partition_relationships:
+                    rel_name = rel[0]
+                    rel_schema = rel[1]
+                    rel_kind = rel[2]
+                    is_parent = rel[3]
+                    
+                    full_name = f"{rel_schema}.{rel_name}" if rel_schema != schema_name else rel_name
+                    
+                    if is_parent:
+                        # This table is partitioned from the related table
+                        partitioned_from.append(full_name)
+                    else:
+                        # This table has partitions (the related table is a partition)
+                        partitioned_to.append(full_name)
+                
+                if partitioned_from:
+                    metadata['partitioned_from'] = partitioned_from
+                if partitioned_to:
+                    metadata['partitioned_to'] = partitioned_to
+            
+            # Get foreign key relationships (only if they exist)
+            cur.execute(self.queries.get_table_foreign_relationships(schema_name, table_name), 
+                       (schema_name, table_name))
+            foreign_relationships = cur.fetchall()
+            
+            if foreign_relationships:
+                foreign_tables = []
+                for rel in foreign_relationships:
+                    foreign_schema = rel[0]
+                    foreign_table = rel[1]
+                    full_name = f"{foreign_schema}.{foreign_table}" if foreign_schema != schema_name else foreign_table
+                    foreign_tables.append(full_name)
+                
+                if foreign_tables:
+                    metadata['foreign_relationships'] = foreign_tables
+                
+        except Exception as e:
+            logger.warning(f"Could not collect table metadata for {schema_name}.{table_name}: {e}")
+        
+        return metadata
+    
+    def _collect_column_metadata(self, schema_name: str, table_name: str, cur) -> Dict[str, Dict[str, Any]]:
+        """Collect column metadata including constraints and indexes."""
+        column_metadata = {}
+        
+        try:
+            # Get constraints for all columns
+            cur.execute(self.queries.get_table_constraints(schema_name, table_name), (schema_name, table_name))
+            constraints = cur.fetchall()
+            
+            for constraint in constraints:
+                column_name = constraint[2]  # column_name
+                constraint_type = constraint[1]  # constraint_type
+                
+                if column_name not in column_metadata:
+                    column_metadata[column_name] = {
+                        'is_primary_key': False,
+                        'is_unique': False,
+                        'is_foreign_key': False,
+                        'is_indexed': False
+                    }
+                
+                if constraint_type == 'PRIMARY KEY':
+                    column_metadata[column_name]['is_primary_key'] = True
+                elif constraint_type == 'UNIQUE':
+                    column_metadata[column_name]['is_unique'] = True
+                elif constraint_type == 'FOREIGN KEY':
+                    column_metadata[column_name]['is_foreign_key'] = True
+            
+            # Get indexes for all columns
+            cur.execute(self.queries.get_table_indexes(schema_name, table_name), (schema_name, table_name))
+            indexes = cur.fetchall()
+            
+            for index in indexes:
+                column_name = index[1]  # column_name
+                if column_name not in column_metadata:
+                    column_metadata[column_name] = {
+                        'is_primary_key': False,
+                        'is_unique': False,
+                        'is_foreign_key': False,
+                        'is_indexed': False
+                    }
+                column_metadata[column_name]['is_indexed'] = True
+                
+        except Exception as e:
+            logger.warning(f"Could not collect column metadata for {schema_name}.{table_name}: {e}")
+        
+        return column_metadata
+    
     def _extract_table_metadata(self, database_name: str, schema_name: str, table_name: str, 
                                table_type: str, conn) -> NormalizedTable:
         """Extract metadata for a specific table."""
         with conn.cursor() as cur:
-            # Create normalized table
-            table_metadata = self.builder.create_table(database_name, schema_name, table_name, table_type)
+            # Collect table metadata
+            table_metadata_info = self._collect_table_metadata(schema_name, table_name, cur)
+            
+            # Create normalized table with metadata
+            table_metadata = self.builder.create_table(
+                database_name, 
+                schema_name, 
+                table_name, 
+                table_type,
+                **table_metadata_info
+            )
             
             # Get table comment
             table_comment = None
@@ -175,6 +321,9 @@ class PostgreSQLSource:
             comments_data = cur.fetchall()
             column_comments = {row[0]: row[1] for row in comments_data if row[1]}
         
+        # Collect column metadata (constraints, indexes)
+        column_metadata = self._collect_column_metadata(schema_name, table_name, cur)
+        
         columns = []
         for col_data in columns_data:
             column_name = col_data[0]
@@ -188,7 +337,10 @@ class PostgreSQLSource:
             yaml_tags = self._get_tags_from_yaml(schema_name, table_name, column_name)
             tags.extend(yaml_tags)
             
-            # Create normalized column
+            # Get column-specific metadata
+            col_meta = column_metadata.get(column_name, {})
+            
+            # Create normalized column with metadata
             column = self.builder.create_column(
                 database_name=database_name,
                 schema_name=schema_name,
@@ -197,12 +349,13 @@ class PostgreSQLSource:
                 data_type=col_data[4],
                 is_nullable=col_data[3] == 'YES',
                 ordinal_position=col_data[1],
-                default_value=col_data[2],
-                max_length=col_data[5],
-                precision=col_data[6],
-                scale=col_data[7],
+                column_default=col_data[2],
                 comment=comment,
-                tags=list(set(tags)) if tags else []
+                tags=list(set(tags)) if tags else [],
+                is_primary_key=col_meta.get('is_primary_key', False),
+                is_unique=col_meta.get('is_unique', False),
+                is_foreign_key=col_meta.get('is_foreign_key', False),
+                is_indexed=col_meta.get('is_indexed', False)
             )
             columns.append(column)
         

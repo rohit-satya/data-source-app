@@ -15,7 +15,7 @@ CREATE TABLE customers (
     email VARCHAR(100) UNIQUE NOT NULL,
     phone VARCHAR(20),
     date_of_birth DATE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     is_active BOOLEAN DEFAULT TRUE,
     credit_score INTEGER CHECK (credit_score >= 300 AND credit_score <= 850),
@@ -55,7 +55,7 @@ CREATE TABLE products (
     weight DECIMAL(8,2),
     dimensions JSONB, -- Store as {"length": 10, "width": 5, "height": 3}
     is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -75,7 +75,7 @@ CREATE TABLE orders (
     shipping_address JSONB NOT NULL, -- Store as {"street": "...", "city": "...", "state": "...", "zip": "..."}
     billing_address JSONB,
     notes TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -109,7 +109,7 @@ CREATE TABLE reviews (
     comment TEXT,
     is_verified BOOLEAN DEFAULT FALSE,
     helpful_votes INTEGER DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -258,8 +258,7 @@ CREATE TABLE normalized_schemas (
     connector_name VARCHAR(50) NOT NULL,
     attributes JSONB NOT NULL DEFAULT '{}',
     custom_attributes JSONB NOT NULL DEFAULT '{}',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(sync_id, name)
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Comment on normalized schemas table
@@ -281,8 +280,7 @@ CREATE TABLE normalized_tables (
     connector_name VARCHAR(50) NOT NULL,
     attributes JSONB NOT NULL DEFAULT '{}',
     custom_attributes JSONB NOT NULL DEFAULT '{}',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(sync_id, name)
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Comment on normalized tables table
@@ -304,8 +302,7 @@ CREATE TABLE normalized_columns (
     connector_name VARCHAR(50) NOT NULL,
     attributes JSONB NOT NULL DEFAULT '{}',
     custom_attributes JSONB NOT NULL DEFAULT '{}',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(sync_id, name)
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Comment on normalized columns table
@@ -324,7 +321,7 @@ CREATE TABLE quality_metrics_runs (
     extraction_duration_seconds DECIMAL(10,3),
     status VARCHAR(20) DEFAULT 'completed' CHECK (status IN ('running', 'completed', 'failed')),
     error_message TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     UNIQUE(sync_id)
 );
 
@@ -335,7 +332,7 @@ CREATE TABLE table_quality_metrics (
     schema_name VARCHAR(63) NOT NULL,
     table_name VARCHAR(63) NOT NULL,
     row_count INTEGER NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     UNIQUE(run_id, schema_name, table_name)
 );
 
@@ -352,7 +349,7 @@ CREATE TABLE column_quality_metrics (
     null_percentage DECIMAL(5,2) NOT NULL,
     distinct_count INTEGER NOT NULL,
     distinct_percentage DECIMAL(5,2) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     UNIQUE(run_id, schema_name, table_name, column_name)
 );
 
@@ -380,7 +377,7 @@ CREATE TABLE credentials (
     ssl_mode VARCHAR(20) DEFAULT 'prefer',
     is_active BOOLEAN DEFAULT TRUE,
     description TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(connection_id, source_type)
 );

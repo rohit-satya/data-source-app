@@ -103,7 +103,7 @@ class NormalizedEntityBuilder:
         )
     
     def create_table(self, database_name: str, schema_name: str, table_name: str, 
-                    table_type: str = "BASE TABLE") -> NormalizedTable:
+                    table_type: str = "BASE TABLE", **kwargs) -> NormalizedTable:
         """Create a normalized table entity.
         
         Args:
@@ -111,6 +111,7 @@ class NormalizedEntityBuilder:
             schema_name: Name of the schema
             table_name: Name of the table
             table_type: Type of the table
+            **kwargs: Additional table metadata
             
         Returns:
             NormalizedTable entity
@@ -139,13 +140,20 @@ class NormalizedEntityBuilder:
                 "table_type": table_type,
                 "is_insertable_into": "YES",
                 "is_typed": "NO",
-                "self_referencing_col_name": ""
+                "self_referencing_col_name": "",
+                "has_foreign_keys": kwargs.get('has_foreign_keys', False),
+                "is_partitioned": kwargs.get('is_partitioned', False),
+                "has_indexes": kwargs.get('has_indexes', False),
+                "has_primary_key": kwargs.get('has_primary_key', False),
+                **{k: v for k, v in kwargs.items() if k in [
+                    'tablespace', 'partitioned_from', 'partitioned_to', 'foreign_relationships'
+                ] and v is not None}
             }
         )
     
     def create_column(self, database_name: str, schema_name: str, table_name: str, 
                      column_name: str, data_type: str, is_nullable: bool = True,
-                     ordinal_position: int = 1, **kwargs) -> NormalizedColumn:
+                     ordinal_position: int = 1, column_default: str = None, **kwargs) -> NormalizedColumn:
         """Create a normalized column entity.
         
         Args:
@@ -156,6 +164,7 @@ class NormalizedEntityBuilder:
             data_type: Data type of the column
             is_nullable: Whether the column is nullable
             ordinal_position: Position of the column
+            column_default: Default value for the column
             **kwargs: Additional column attributes
             
         Returns:
@@ -174,7 +183,12 @@ class NormalizedEntityBuilder:
             "type_name": data_type,
             "is_generated": "NEVER",
             "is_identity": "NO",
-            "identity_cycle": "NO"
+            "identity_cycle": "NO",
+            "is_primary_key": kwargs.get('is_primary_key', False),
+            "has_default": column_default is not None,
+            "is_unique": kwargs.get('is_unique', False),
+            "is_foreign_key": kwargs.get('is_foreign_key', False),
+            "is_indexed": kwargs.get('is_indexed', False)
         }
         custom_attributes.update(kwargs)
         
