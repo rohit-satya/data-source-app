@@ -38,7 +38,7 @@ mkdir src/connector/{source_type}
 Create `src/connector/{source_type}/{source_type}_source.py`:
 
 ```python
-"""MySQL source implementation for metadata and quality metrics extraction."""
+"""Generic source implementation for metadata and quality metrics extraction."""
 
 import logging
 from typing import Dict, List, Any, Optional
@@ -81,11 +81,11 @@ class TableQualityMetrics:
     table_name: str
     column_metrics: List[ColumnQualityMetrics]
 
-class MySQLSource:
-    """MySQL source implementation for metadata and quality metrics extraction."""
+class GenericSource:
+    """Generic source implementation for metadata and quality metrics extraction."""
     
     def __init__(self, connection, config: AppConfig):
-        """Initialize MySQL source.
+        """Initialize Generic source.
         
         Args:
             connection: Database connection instance
@@ -124,26 +124,26 @@ class MySQLSource:
 Create `src/connector/{source_type}/{source_type}_connector.py`:
 
 ```python
-"""MySQL connector implementation."""
+"""Generic connector implementation."""
 
 import logging
 from typing import Dict, List, Any, Optional
 
 from ..base_connector import BaseConnector, SourceConnection
-from .mysql_source import MySQLSource, SchemaMetadata, TableQualityMetrics
+from .generic_source import GenericSource, SchemaMetadata, TableQualityMetrics
 from ...config import AppConfig
 
 logger = logging.getLogger(__name__)
 
-class MySQLConnector(BaseConnector):
-    """MySQL connector implementation."""
+class GenericConnector(BaseConnector):
+    """Generic connector implementation."""
     
     def __init__(self, connection: SourceConnection, config: AppConfig):
-        """Initialize MySQL connector."""
+        """Initialize Generic connector."""
         super().__init__(connection, config)
         # Initialize your database connection here
-        # self.db_connection = MySQLConnection(connection.connection_string)
-        self.source = MySQLSource(self.db_connection, config)
+        # self.db_connection = GenericConnection(connection.connection_string)
+        self.source = GenericSource(self.db_connection, config)
     
     def extract_metadata(self, target_schemas: Optional[List[str]] = None) -> List[SchemaMetadata]:
         """Extract metadata for all schemas or specified schemas."""
@@ -174,12 +174,12 @@ class MySQLConnector(BaseConnector):
 Create `src/connector/{source_type}/__init__.py`:
 
 ```python
-"""MySQL connector package."""
+"""Generic connector package."""
 
-from .mysql_connector import MySQLConnector
-from .mysql_source import MySQLSource
+from .generic_connector import GenericConnector
+from .generic_source import GenericSource
 
-__all__ = ['MySQLConnector', 'MySQLSource']
+__all__ = ['GenericConnector', 'GenericSource']
 ```
 
 ### 5. Register with Factory
@@ -187,12 +187,12 @@ __all__ = ['MySQLConnector', 'MySQLSource']
 Update `src/connector/connector_factory.py`:
 
 ```python
-from .mysql.mysql_connector import MySQLConnector
+from .generic.generic_connector import GenericConnector
 
 class ConnectorFactory:
     _connectors = {
         'postgresql': PostgreSQLConnector,
-        'mysql': MySQLConnector,  # Add your new connector
+        'generic': GenericConnector,  # Add your new connector
     }
 ```
 
@@ -204,8 +204,8 @@ In `src/app.py`, update the `get_source_connection` function:
 # Build connection string based on source type
 if credentials.source_type.lower() == "postgresql":
     connection_string = f"postgresql://{credentials.username}:{credentials.password}@{credentials.host}:{credentials.port}/{credentials.database_name}"
-elif credentials.source_type.lower() == "mysql":
-    connection_string = f"mysql://{credentials.username}:{credentials.password}@{credentials.host}:{credentials.port}/{credentials.database_name}"
+elif credentials.source_type.lower() == "generic":
+    connection_string = f"generic://{credentials.username}:{credentials.password}@{credentials.host}:{credentials.port}/{credentials.database_name}"
 else:
     console.print(f"❌ Unsupported source type: {credentials.source_type}", style="red")
     return None
@@ -215,17 +215,17 @@ else:
 
 1. Add credentials for your new source type:
    ```bash
-   python -m src.app credentials-add --connection-id mysql-test --host localhost --port 3306 --database testdb --username root --password password
+   python -m src.app credentials-add --connection-id generic-test --host localhost --port 5432 --database testdb --username root --password password
    ```
 
 2. Test metadata extraction:
    ```bash
-   python -m src.app scan --connection-id mysql-test
+   python -m src.app scan --connection-id generic-test
    ```
 
 3. Test quality metrics extraction:
    ```bash
-   python -m src.app quality-metrics --connection-id mysql-test
+   python -m src.app quality-metrics --connection-id generic-test
    ```
 
 ## Key Benefits of This Architecture
