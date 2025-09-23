@@ -1,27 +1,48 @@
-# PostgreSQL Metadata App
+# Data Source App
 
-A comprehensive Python application for extracting metadata and quality metrics from PostgreSQL databases. This tool helps data teams understand their database structure, relationships, and data quality characteristics.
+A comprehensive Python application for extracting metadata and quality metrics from PostgreSQL databases with advanced features for data governance, change tracking, and web-based visualization. This tool helps data teams understand their database structure, relationships, and data quality characteristics.
 
 ## Features
 
-### Schema Metadata
+### Core Metadata Extraction
 - Extract schemas, tables, and columns with detailed information
 - Capture data types, nullability, defaults, and constraints
 - Extract primary keys, foreign keys, unique constraints, and indexes
 - Support for various PostgreSQL data types including JSONB, arrays, and custom types
+- **Normalized Entity Model**: Structured metadata following industry-standard data catalog patterns
 
-### Business Context
-- Extract table and column descriptions from PostgreSQL comments
-- Parse tags from comments using `[tags: tag1,tag2]` format
-- Support for YAML metadata files for additional business context
-- Hierarchical tag organization for better data governance
+### Advanced Metadata Features
+- **Partition Information**: Extract parent/child partition relationships
+- **Foreign Key Relationships**: Track table dependencies and relationships
+- **Index Analysis**: Comprehensive index metadata including columns and properties
+- **Tablespace Information**: Database storage and performance metadata
+- **Custom Attributes**: Extensible metadata storage for additional context
 
-### Quality Metrics
+### Quality Metrics & Analysis
 - Row count analysis with sampling for large tables
 - Null count and percentage calculations
 - Distinct value analysis
 - Top-K value frequency analysis
 - Data quality scoring and summary statistics
+- **Comprehensive Quality Views**: Pre-built views for easy quality analysis
+
+### Change Tracking & Diff Analysis
+- **Incremental Diff**: Compare metadata between sync runs
+- **Change Detection**: Identify added, removed, and modified assets
+- **Historical Tracking**: Track metadata changes over time
+- **Diff Summary Views**: Easy-to-query change summaries
+
+### Credentials Management
+- **Secure Storage**: Encrypted password storage with configurable keys
+- **Multiple Connections**: Manage multiple database connections
+- **Connection Testing**: Validate connections before use
+- **Environment Support**: Flexible configuration for different environments
+
+### Web Frontend
+- **Interactive Web Interface**: Browse metadata in a user-friendly web application
+- **Real-time Data**: Live data from your database
+- **Connection Management**: View and manage database connections
+- **Metadata Navigation**: Easy browsing of schemas, tables, and columns
 
 ### Export Capabilities
 - **PostgreSQL Storage**: Store metadata directly in PostgreSQL database for structured querying
@@ -35,6 +56,7 @@ A comprehensive Python application for extracting metadata and quality metrics f
 - Support for specific schema scanning or full database analysis
 - Configurable via YAML files
 - Rich console output with progress indicators
+- **Connection-based Operations**: Work with named connections instead of direct DSNs
 
 ## Installation
 
@@ -71,34 +93,47 @@ database:
 
 ### Basic Usage
 
-1. **Load sample data and create production schema:**
+1. **Set up credentials for your database:**
+```bash
+python -m src.app credentials-add \
+  --connection-id production \
+  --host your-db-host \
+  --port 5432 \
+  --database your-database \
+  --username your-username \
+  --password your-password
+```
+
+2. **Load sample data and create production schema:**
 ```bash
 python -m src.app populate-sample
 ```
 
-2. **Extract metadata and store in PostgreSQL:**
+3. **Extract metadata using your connection:**
 ```bash
-python -m src.app scan --schema dsa_ecommerce --format postgres
+python -m src.app scan --connection-id production --format postgres
 ```
 
-3. **Extract metadata for all schemas:**
+4. **Extract quality metrics:**
 ```bash
-python -m src.app scan-all --format postgres
+python -m src.app quality-metrics --connection-id production --format postgres
 ```
 
-4. **Extract quality metrics and store in PostgreSQL:**
+5. **Run incremental diff to track changes:**
 ```bash
-python -m src.app quality-metrics --schema dsa_ecommerce --format postgres
+python -m src.app incremental-diff --connection-id production --format postgres
 ```
 
-5. **Check status of latest extractions:**
+6. **Start the web frontend:**
+```bash
+cd frontend
+python web_app.py
+# Open http://localhost:5001 in your browser
+```
+
+7. **Check status of latest extractions:**
 ```bash
 python -m src.app status
-```
-
-6. **Clean up old metadata:**
-```bash
-python -m src.app cleanup --days 30
 ```
 
 ### Configuration
@@ -152,14 +187,22 @@ lineage:
   enabled: true
   extract_foreign_keys: true
   parse_view_dependencies: true
+
+# Encryption configuration
+encryption:
+  # Master key for password encryption (base64 encoded)
+  master_key: "your-base64-encoded-encryption-key"
 ```
 
 ## Command Reference
 
-### `scan`
-Extract metadata from specified schemas.
+### Core Commands
+
+#### `scan`
+Extract metadata from specified schemas using a named connection.
 
 **Options:**
+- `--connection-id`: Connection ID to use (required)
 - `--config, -c`: Path to configuration file (default: config.yml)
 - `--schema, -s`: Specific schema to scan
 - `--format, -f`: Output format (json, csv, postgres, all) (default: postgres)
@@ -168,44 +211,127 @@ Extract metadata from specified schemas.
 
 **Examples:**
 ```bash
-# Scan public schema and store in PostgreSQL
-python -m src.app scan --schema public --format postgres
+# Scan using named connection
+python -m src.app scan --connection-id production --format postgres
 
-# Scan all schemas and export to all formats
-python -m src.app scan --format all
+# Scan specific schema
+python -m src.app scan --connection-id production --schema public --format postgres
 ```
 
-### `scan-all`
-Extract metadata from all available schemas.
+#### `quality-metrics`
+Extract quality metrics from the database using a named connection.
 
 **Options:**
-- `--config, -c`: Path to configuration file
-- `--format, -f`: Output format (json, csv, both)
-- `--verbose, -v`: Enable verbose logging
-- `--log-file`: Log file path
-
-### `quality-metrics`
-Extract quality metrics from the database.
-
-**Options:**
+- `--connection-id`: Connection ID to use (required)
 - `--config, -c`: Path to configuration file
 - `--schema, -s`: Specific schema to analyze
-- `--format, -f`: Output format (json, csv, both)
+- `--format, -f`: Output format (json, csv, postgres)
 - `--verbose, -v`: Enable verbose logging
-- `--log-file`: Log file path
 
 **Examples:**
 ```bash
-# Analyze quality metrics for ecommerce schema
-python -m src.app quality-metrics --schema ecommerce --format csv
+# Analyze quality metrics
+python -m src.app quality-metrics --connection-id production --format postgres
 ```
 
-### `populate-sample`
+#### `incremental-diff`
+Compare metadata between the last two sync runs to identify changes.
+
+**Options:**
+- `--connection-id`: Connection ID to analyze (required)
+- `--format, -f`: Output format (postgres, json) (default: postgres)
+- `--config, -c`: Path to configuration file
+- `--verbose, -v`: Enable verbose logging
+
+**Examples:**
+```bash
+# Run incremental diff analysis
+python -m src.app incremental-diff --connection-id production --format postgres
+```
+
+### Credentials Management
+
+#### `credentials-add`
+Add new database connection credentials.
+
+**Options:**
+- `--connection-id`: Unique identifier for the connection (required)
+- `--host`: Database host (required)
+- `--port`: Database port (required)
+- `--database`: Database name (required)
+- `--username`: Username (required)
+- `--password`: Password (required)
+- `--ssl-mode`: SSL mode (default: prefer)
+- `--description`: Optional description
+- `--config, -c`: Path to configuration file
+
+**Examples:**
+```bash
+# Add production database credentials
+python -m src.app credentials-add \
+  --connection-id production \
+  --host db.example.com \
+  --port 5432 \
+  --database mydb \
+  --username admin \
+  --password secret123
+```
+
+#### `credentials-list`
+List all stored credentials.
+
+**Options:**
+- `--config, -c`: Path to configuration file
+
+#### `credentials-delete`
+Delete credentials for a connection.
+
+**Options:**
+- `--connection-id`: Connection ID to delete (required)
+- `--config, -c`: Path to configuration file
+
+### Utility Commands
+
+#### `status`
+Show status of latest metadata and quality metrics extractions.
+
+**Options:**
+- `--config, -c`: Path to configuration file
+
+#### `populate-sample`
 Load sample data into the database for testing.
 
 **Options:**
 - `--config, -c`: Path to configuration file
 - `--verbose, -v`: Enable verbose logging
+
+#### `cleanup`
+Clean up old metadata and quality metrics data.
+
+**Options:**
+- `--days`: Number of days to keep (default: 30)
+- `--config, -c`: Path to configuration file
+- `--verbose, -v`: Enable verbose logging
+
+### Encryption Management
+
+#### `key-info`
+Show information about the stored encryption key.
+
+**Options:**
+- `--config, -c`: Path to configuration file
+
+#### `key-generate`
+Generate and store a new encryption key.
+
+**Options:**
+- `--config, -c`: Path to configuration file
+
+#### `key-delete`
+Delete the stored encryption key.
+
+**Options:**
+- `--config, -c`: Path to configuration file
 
 ## Output Formats
 
@@ -255,16 +381,34 @@ The PostgreSQL storage option stores metadata directly in the database using a s
 #### Database Schema
 The metadata is stored in the following tables:
 
-- **`metadata_extraction_runs`** - Tracks extraction runs with timestamps and statistics
-- **`schemas_metadata`** - Schema-level metadata (name, owner, table count)
-- **`tables_metadata`** - Table-level metadata (name, type, comments, tags)
-- **`columns_metadata`** - Column-level metadata (type, nullability, constraints)
-- **`constraints_metadata`** - Constraint information (PK, FK, unique, check)
-- **`indexes_metadata`** - Index definitions and properties
+**Core Metadata Tables:**
+- **`sync_runs`** - Tracks sync runs with timestamps and statistics
+- **`normalized_schemas`** - Schema-level metadata with normalized structure
+- **`normalized_tables`** - Table-level metadata with normalized structure
+- **`normalized_columns`** - Column-level metadata with normalized structure
+
+**Quality Metrics Tables:**
 - **`quality_metrics_runs`** - Quality metrics extraction runs
 - **`table_quality_metrics`** - Table-level quality metrics
 - **`column_quality_metrics`** - Column-level quality metrics
 - **`column_top_values`** - Most frequent values for each column
+
+**Change Tracking Tables:**
+- **`diff_sync_runs`** - Tracks incremental diff operations
+- **`incremental_diff_schema`** - Schema-level changes
+- **`incremental_diff_table`** - Table-level changes
+- **`incremental_diff_column`** - Column-level changes
+
+**Credentials Management:**
+- **`credentials`** - Encrypted database connection credentials
+
+**Views for Easy Querying:**
+- **`latest_schema_metadata`** - Latest schema metadata
+- **`latest_table_metadata`** - Latest table metadata
+- **`latest_column_metadata`** - Latest column metadata
+- **`latest_quality_metrics_summary`** - Latest quality metrics
+- **`diff_summary`** - Incremental diff summaries
+- **`active_credentials`** - Active database connections
 
 #### Benefits
 - **Structured Querying**: Use SQL to query metadata with joins and filters
@@ -276,14 +420,13 @@ The metadata is stored in the following tables:
 #### Example Queries
 
 ```sql
--- Get all tables with their column counts
+-- Get latest metadata for all tables
 SELECT 
-    schema_name, 
-    table_name, 
-    column_count,
-    comment
-FROM dsa_production.tables_metadata 
-WHERE run_id = (SELECT MAX(run_id) FROM dsa_production.metadata_extraction_runs)
+    name as table_name,
+    attributes->>'schemaName' as schema_name,
+    attributes->>'tableType' as table_type,
+    custom_attributes->>'created_at' as created_at
+FROM dsa_production.latest_table_metadata
 ORDER BY schema_name, table_name;
 
 -- Find columns with high null percentages
@@ -292,23 +435,76 @@ SELECT
     table_name,
     column_name,
     null_percentage
-FROM dsa_production.column_quality_metrics 
+FROM dsa_production.latest_column_quality_metrics 
 WHERE null_percentage > 50
 ORDER BY null_percentage DESC;
 
--- Get quality score by schema
+-- Get recent changes using incremental diff
 SELECT 
     schema_name,
-    AVG(overall_quality_score) as avg_quality_score
-FROM dsa_production.quality_metrics_runs 
+    table_name,
+    change_type,
+    COUNT(*) as change_count
+FROM dsa_production.diff_summary ds
+JOIN dsa_production.incremental_diff_table idt ON ds.diff_sync_id = idt.diff_sync_id
+WHERE ds.connection_id = 'production'
+GROUP BY schema_name, table_name, change_type;
+
+-- Get metadata summary by connection
+SELECT 
+    connection_name,
+    connector_name,
+    COUNT(DISTINCT sync_id) as sync_count,
+    MAX(sync_timestamp) as latest_sync
+FROM dsa_production.sync_runs 
 WHERE status = 'completed'
-GROUP BY schema_name;
+GROUP BY connection_name, connector_name
+ORDER BY latest_sync DESC;
 ```
 
-#### New Commands
+## Web Frontend
 
-- **`status`** - Show status of latest metadata and quality metrics extractions
-- **`cleanup`** - Clean up old metadata (default: 30 days)
+The application includes a web-based frontend for easy metadata browsing and visualization.
+
+### Starting the Frontend
+
+```bash
+# Navigate to frontend directory
+cd frontend
+
+# Start the Flask web application
+python web_app.py
+
+# Open http://localhost:5001 in your browser
+```
+
+### Frontend Features
+
+- **Connection Management**: View and manage database connections
+- **Metadata Browser**: Navigate through schemas, tables, and columns
+- **Real-time Data**: Live data from your database
+- **Quality Metrics**: View data quality metrics and statistics
+- **Change Tracking**: Browse incremental diff results
+- **Responsive Design**: Works on desktop and mobile devices
+
+### Frontend Routes
+
+- **`/`** - Home page with connection list
+- **`/metadata/<connection_id>`** - Metadata browser for specific connection
+- **`/api/connections`** - API endpoint for connection list
+- **`/api/metadata/<connection_id>`** - API endpoint for metadata
+
+### Command-Line Frontend
+
+For terminal-based viewing:
+
+```bash
+# Display metadata for a specific connection
+python frontend/app.py production
+
+# With custom config
+python frontend/app.py production --config ../config.yml
+```
 
 ## Business Context and Tags
 
@@ -382,24 +578,41 @@ The application includes comprehensive sample data for testing:
 
 ### Project Structure
 ```
-postgres-metadata-app/
+data-source-app/
 ├── README.md
-├── docs/
-├── sample_data/
+├── config.yml              # Main configuration file
+├── requirements.txt        # Python dependencies
+├── pyproject.toml         # Project configuration
+├── docs/                  # Documentation
+│   ├── architecture.md
+│   ├── setup.pdf
+│   └── usage.pdf
+├── frontend/              # Web frontend
+│   ├── web_app.py         # Flask web application
+│   ├── app.py             # Command-line frontend
+│   ├── templates/         # HTML templates
+│   └── README.md
+├── sample_data/           # Sample data and schemas
 │   ├── sample_schema.sql
 │   └── sample_metadata.yml
-├── scripts/
-│   └── populate_sample.sh
-├── src/
-│   ├── app.py              # CLI entry point
-│   ├── config.py           # Configuration management
-│   ├── db/                 # Database connection and queries
-│   ├── extractor/          # Metadata and quality extraction
-│   ├── exporters/          # JSON and CSV exporters
-│   └── utils.py            # Utility functions
-├── tests/
-├── requirements.txt
-└── pyproject.toml
+├── scripts/               # Setup and utility scripts
+│   ├── populate_sample.sh
+│   └── create_incremental_diff_schema.sql
+├── src/                   # Main application code
+│   ├── app.py             # CLI entry point
+│   ├── config.py          # Configuration management
+│   ├── connector/         # Database connectors
+│   │   └── postgres/
+│   ├── credentials/       # Credentials management
+│   ├── db/                # Database connection and queries
+│   ├── exporters/         # Export functionality
+│   ├── models/            # Data models
+│   ├── services/          # Business logic services
+│   └── utils/             # Utility functions
+├── tests/                 # Test files
+└── output/                # Generated output files
+    ├── json/
+    └── csv/
 ```
 
 ### Running Tests
@@ -416,27 +629,68 @@ black src/ tests/
 flake8 src/ tests/
 ```
 
+## Architecture
+
+### Normalized Entity Model
+
+The application uses a normalized entity model that follows industry-standard data catalog patterns:
+
+- **Schema Entities**: Top-level database schemas
+- **Table Entities**: Tables within schemas
+- **Column Entities**: Columns within tables
+
+Each entity includes:
+- **Core Attributes**: `typeName`, `name`, `connectionName`, `tenantId`, `lastSyncRun`, `lastSyncRunAt`, `connectorName`
+- **Attributes**: Qualified names, data types, constraints, and metadata
+- **Custom Attributes**: Extensible JSONB fields for additional context
+
+### Key Components
+
+- **Connectors**: Database-specific extraction logic (PostgreSQL)
+- **Services**: Business logic for metadata processing and diff analysis
+- **Models**: Normalized entity builders and data structures
+- **Exporters**: Multiple output formats (PostgreSQL, JSON, CSV)
+- **Frontend**: Web and command-line interfaces
+
+### Security Features
+
+- **Encrypted Credentials**: Passwords stored with configurable encryption keys
+- **Secure Configuration**: YAML-based configuration with environment variable support
+- **Connection Testing**: Validate connections before use
+
 ## Troubleshooting
 
 ### Common Issues
 
 1. **Database Connection Failed**
-   - Verify connection parameters in config.yml
+   - Verify credentials using `credentials-list`
+   - Test connection with `credentials-add` --test
    - Check if PostgreSQL is running
    - Ensure user has appropriate permissions
 
-2. **Permission Denied**
+2. **Encryption Key Issues**
+   - Check encryption key in config.yml
+   - Use `key-info` to verify key status
+   - Generate new key with `key-generate` if needed
+
+3. **Permission Denied**
    - Ensure user has SELECT permissions on target schemas
    - For quality metrics, user needs access to pg_stat_user_tables
+   - Check connection credentials are correct
 
-3. **Memory Issues with Large Tables**
+4. **Memory Issues with Large Tables**
    - Reduce sample_limit in configuration
    - Process schemas individually
    - Use database-level sampling
 
-4. **Missing Dependencies**
+5. **Missing Dependencies**
    - Run `pip install -r requirements.txt`
    - Ensure Python 3.11+ is installed
+
+6. **Frontend Not Loading**
+   - Check if Flask is installed: `pip install Flask`
+   - Verify database connection is working
+   - Check port 5001 is available
 
 ### Logging
 
