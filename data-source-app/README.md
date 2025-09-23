@@ -264,7 +264,6 @@ Delete credentials for a connection.
 - `--connection-id`: Connection ID to delete (required)
 - `--config, -c`: Path to configuration file
 
-
 ## Output Formats
 
 ### JSON Output
@@ -315,7 +314,6 @@ The metadata is stored in the following tables:
 - **Historical Tracking**: Track metadata changes over time
 - **Performance**: Better performance for large datasets
 - **Integration**: Easy integration with existing database tools
-
 
 #### Example Queries
 
@@ -378,21 +376,188 @@ python web_app.py
 # Open http://localhost:5001 in your browser
 ```
 
+### Frontend Architecture
+
+#### Key Design Principles
+- **🔌 No Dependencies**: Doesn't touch existing components (app.py, connector, exporter, extractor)
+- **📊 Direct Database Access**: Queries normalized tables directly
+- **🎯 Connection-Based**: Identifies latest sync run by connection_id
+- **📱 Multiple Interfaces**: Command line, web UI, and API endpoints
+
+#### Data Flow
+1. **Connection Discovery** → Query `sync_runs` table for available connections
+2. **Latest Sync Identification** → Find most recent completed sync for connection_id
+3. **Metadata Retrieval** → Fetch from `normalized_schemas`, `normalized_tables`, `normalized_columns`
+4. **Data Presentation** → Display in user-friendly format
+
 ### Frontend Features
 
-- **Connection Management**: View and manage database connections
-- **Metadata Browser**: Navigate through schemas, tables, and columns
-- **Real-time Data**: Live data from your database
-- **Quality Metrics**: View data quality metrics and statistics
-- **Change Tracking**: Browse incremental diff results
-- **Responsive Design**: Works on desktop and mobile devices
+#### Command Line Interface (`frontend/app.py`)
+- **Usage**: `python frontend/app.py <connection_id> --config config.yml`
+- **Features**:
+  - Displays latest metadata in formatted terminal output
+  - Shows schemas, tables, and columns hierarchically
+  - Includes summary statistics
+  - Color-coded output for better readability
 
-### Frontend Routes
+#### Web Interface (`frontend/web_app.py`)
+- **Usage**: `python frontend/web_app.py` (runs on http://localhost:5001)
+- **Features**:
+  - Modern, responsive web UI
+  - Connection discovery and selection
+  - Hierarchical metadata display
+  - Real-time statistics
+  - Mobile-friendly design
 
-- **`/`** - Home page with connection list
-- **`/metadata/<connection_id>`** - Metadata browser for specific connection
-- **`/api/connections`** - API endpoint for connection list
-- **`/api/metadata/<connection_id>`** - API endpoint for metadata
+#### REST API Endpoints
+- **`GET /api/connections`** - List available connections
+- **`GET /api/metadata/<connection_id>`** - Get metadata for connection
+- **`GET /`** - Main page with connection list
+- **`GET /metadata/<connection_id>`** - Metadata display page
+
+### Data Display Features
+
+#### Schema Information
+- Schema names and status
+- Custom attributes
+- Tenant and connector information
+
+#### Table Information
+- Table names grouped by schema
+- Table types (BASE TABLE, VIEW, etc.)
+- Custom attributes and metadata
+
+#### Column Information
+- Column names with data types
+- Nullability constraints
+- Comments and descriptions
+- Order and position information
+
+#### Sync Information
+- Sync ID and timestamp
+- Connector type
+- Connection details
+- Status information
+
+### Frontend Usage Examples
+
+#### Command Line
+```bash
+# Display metadata for a connection
+python frontend/app.py test-connection --config config.yml
+
+# Show help
+python frontend/app.py --help
+```
+
+#### Web Interface
+```bash
+# Start web server
+python frontend/web_app.py
+
+# Visit in browser
+open http://localhost:5001
+```
+
+#### API Usage
+```bash
+# Get available connections
+curl http://localhost:5001/api/connections
+
+# Get metadata for specific connection
+curl http://localhost:5001/api/metadata/test-connection
+```
+
+## Incremental Diff Feature
+
+The incremental diff feature allows you to compare metadata between the last two sync runs for a connection, tracking changes in schemas, tables, and columns.
+
+### How It Works
+
+#### Process Flow
+1. **Identify Sync Runs**: Finds the last 2 sync runs for the specified connection
+2. **Create Diff Record**: Creates a new `diff_sync_runs` record with unique UUID
+3. **Compare Assets**: Compares schemas, tables, and columns between the two runs
+4. **Store Differences**: Saves detailed differences to respective diff tables
+5. **Update Status**: Marks the diff operation as completed
+
+#### Change Detection
+The system detects the following types of changes:
+- **Added**: Asset exists in newer run but not in older run
+- **Removed**: Asset exists in older run but not in newer run  
+- **Modified**: Asset exists in both runs but with different attributes
+- **Unchanged**: Asset exists in both runs with identical attributes
+
+#### Comparison Logic
+For each asset type (schema, table, column), the system compares:
+- `attributes` - Core metadata attributes
+- `custom_attributes` - Custom metadata attributes
+- `created_at` and `updated_at` timestamps
+
+### Database Schema
+
+#### diff_sync_runs Table
+Tracks each diff operation:
+
+```sql
+CREATE TABLE dsa_production.diff_sync_runs (
+    diff_sync_id UUID PRIMARY KEY,
+    connection_id TEXT NOT NULL,
+    sync_run_1_id UUID NOT NULL,  -- Older sync run
+    sync_run_2_id UUID NOT NULL,  -- Newer sync run
+    started_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    completed_at TIMESTAMP WITH TIME ZONE,
+    status TEXT NOT NULL DEFAULT 'running',
+    total_schemas_changed INTEGER DEFAULT 0,
+    total_tables_changed INTEGER DEFAULT 0,
+    total_columns_changed INTEGER DEFAULT 0,
+    error_message TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+```
+
+#### incremental_diff_* Tables
+Store detailed differences for each asset type:
+
+```sql
+-- Schema differences
+CREATE TABLE dsa_production.incremental_diff_schema (
+    diff_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    diff_sync_id UUID NOT NULL,
+    schema_name TEXT NOT NULL,
+    change_type TEXT NOT NULL,  -- 'added', 'removed', 'modified'
+    sync_run_1_data JSONB,     -- Data from older run
+    sync_run_2_data JSONB,     -- Data from newer run
+    differences JSONB,         -- Detailed differences
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+```
+
+### Example Output
+
+```
+🔍 Starting incremental diff for connection: aiven
+📊 Output format: postgres
+⠋ Running incremental diff...
+
+🎉 Incremental diff completed successfully!
+🆔 Diff Sync ID: 123e4567-e89b-12d3-a456-426614174000
+🔌 Connection: aiven
+📊 Sync Run 1 (older): 456e7890-e89b-12d3-a456-426614174001
+📊 Sync Run 2 (newer): 789e0123-e89b-12d3-a456-426614174002
+
+┏━━━━━━━━━━━━━┳━━━━━━━━━┓
+┃ Asset Type  ┃ Changes ┃
+┡━━━━━━━━━━━━━╇━━━━━━━━━┩
+│ Schemas     │ 0       │
+│ Tables      │ 2       │
+│ Columns     │ 5       │
+│ Total       │ 7       │
+└─────────────┴─────────┘
+
+💡 View detailed changes in dsa_production.incremental_diff_* tables
+💡 Query diff summary: SELECT * FROM dsa_production.diff_summary WHERE diff_sync_id = '123e4567-e89b-12d3-a456-426614174000'
+```
 
 ## Quality Metrics
 
@@ -487,8 +652,3 @@ Each entity includes:
 - **Models**: Normalized entity builders and data structures
 - **Exporters**: Multiple output formats (PostgreSQL, JSON)
 - **Frontend**: Web and command-line interfaces
-
-### Security Features
-
-- **Encrypted Credentials**: Passwords stored with AES-128 encryption using configurable master keys
-- **Connection Testing**: Validate connections before use
