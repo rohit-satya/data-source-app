@@ -113,8 +113,8 @@ python -m src.app incremental-diff --connection-id production --format postgres
 
 5. **Start the web frontend:**
 ```bash
-cd frontend
-python web_app.py
+
+python frontend/web_app.py
 # Open http://localhost:5001 in your browser
 ```
 
@@ -186,10 +186,10 @@ Extract metadata from specified schemas using a named connection.
 **Examples:**
 ```bash
 # Scan using named connection
-python -m src.app scan --connection-id production --format postgres
+python -m src.app scan --connection-id aiven --format postgres
 
 # Scan specific schema
-python -m src.app scan --connection-id production --schema public --format postgres
+python -m src.app scan --connection-id aiven --schema public --format postgres
 ```
 
 #### `quality-metrics`
@@ -205,7 +205,7 @@ Extract quality metrics from the database using a named connection.
 **Examples:**
 ```bash
 # Analyze quality metrics
-python -m src.app quality-metrics --connection-id production --format postgres
+python -m src.app quality-metrics --connection-id aiven --format postgres
 ```
 
 #### `incremental-diff`
@@ -220,7 +220,7 @@ Compare metadata between the last two sync runs to identify changes.
 **Examples:**
 ```bash
 # Run incremental diff analysis
-python -m src.app incremental-diff --connection-id production --format postgres
+python -m src.app incremental-diff --connection-id aiven --format postgres
 ```
 
 ### Credentials Management
